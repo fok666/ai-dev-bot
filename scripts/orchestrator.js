@@ -2,9 +2,9 @@
 
 import fs from 'fs';
 import path from 'path';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Octokit } from '@octokit/rest';
 import { fileURLToPath } from 'url';
+import { getGeminiService } from './gemini-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -13,8 +13,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  */
 class Orchestrator {
   constructor() {
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+    const config = this.loadConfig();
+    this.gemini = getGeminiService(config.gemini);
     
     this.octokit = new Octokit({
       auth: process.env.GH_API_TOKEN || process.env.GITHUB_TOKEN
@@ -79,9 +79,7 @@ class Orchestrator {
       console.log('\n📝 Prompt constructed, querying Gemini...\n');
 
       // Query Gemini
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
+      const text = await this.gemini.generate(prompt, { checkTokens: true });
 
       console.log('\n✅ Received response from Gemini\n');
       console.log('Response preview:');
@@ -116,7 +114,7 @@ class Orchestrator {
    * Build prompt for Gemini
    */
   buildPrompt(context, sdd) {
-    const sddExcerpt = sdd.substring(0, 3000); // Limit SDD size
+    const sddExcerpt = this.gemini.optimizePrompt(sdd, 3000);
 
     return `You are an expert software engineer working on the AI-Dev-Bot project.
 

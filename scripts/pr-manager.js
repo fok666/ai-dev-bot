@@ -3,7 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Octokit } from '@octokit/rest';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getGeminiService } from './gemini-service.js';
 
 /**
  * PR Manager - Handles pull request operations
@@ -14,8 +14,7 @@ class PRManager {
       auth: process.env.GH_API_TOKEN || process.env.GITHUB_TOKEN
     });
 
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+    this.gemini = getGeminiService();
 
     const repoEnv = process.env.GITHUB_REPOSITORY || '';
     const [owner, repo] = repoEnv.split('/');
@@ -137,8 +136,7 @@ Provide a brief review assessment:
 
 Keep response concise (under 200 words).`;
 
-      const result = await this.model.generateContent(prompt);
-      const reviewText = result.response.text();
+      const reviewText = await this.gemini.generate(prompt);
 
       console.log('\n📋 Review generated:\n');
       console.log(reviewText);

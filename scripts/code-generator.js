@@ -2,8 +2,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { fileURLToPath } from 'url';
+import { getGeminiService } from './gemini-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -12,8 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  */
 class CodeGenerator {
   constructor() {
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+    this.gemini = getGeminiService();
   }
 
   /**
@@ -71,9 +70,8 @@ class CodeGenerator {
       const prompt = this.buildCodePrompt(filepath, description, language, plan, context, existingCode);
 
       // Query Gemini for code
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const generatedCode = this.extractCode(response.text());
+      const responseText = await this.gemini.generate(prompt);
+      const generatedCode = this.extractCode(responseText);
 
       return {
         filepath,

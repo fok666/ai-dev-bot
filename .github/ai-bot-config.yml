@@ -6,6 +6,19 @@ bot:
   mode: 'autonomous'  # autonomous | supervised
   schedule: '0 2 * * *'  # Cron schedule
 
+# Gemini AI Configuration
+gemini:
+  model: 'gemini-3-flash-preview'
+  temperature: 0.3
+  maxOutputTokens: 8096
+  topP: 0.95
+  topK: 40
+  rateLimitPerHour: 100
+  enableCaching: true
+  retryAttempts: 3
+  retryDelay: 1000
+  timeout: 60000
+
 # Repositories to monitor
 repositories:
   - name: 'fok666/selfhosted-devops'

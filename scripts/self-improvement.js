@@ -2,9 +2,9 @@
 
 import fs from 'fs';
 import path from 'path';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Octokit } from '@octokit/rest';
 import { fileURLToPath } from 'url';
+import { getGeminiService } from './gemini-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,8 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  */
 class SelfImprovement {
   constructor() {
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+    this.gemini = getGeminiService();
     
     this.octokit = new Octokit({
       auth: process.env.GH_API_TOKEN || process.env.GITHUB_TOKEN
@@ -239,8 +238,7 @@ class SelfImprovement {
       const prompt = this.buildAnalysisPrompt(metricsHistory, reviewFeedback);
 
       // Query Gemini for insights
-      const result = await this.model.generateContent(prompt);
-      const response = result.response.text();
+      const response = await this.gemini.generate(prompt, { checkTokens: true });
 
       const suggestions = this.parseSuggestions(response);
 

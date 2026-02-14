@@ -3,8 +3,8 @@
 import fs from 'fs';
 import path from 'path';
 import { Octokit } from '@octokit/rest';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import yaml from 'js-yaml';
+import { getGeminiService } from './gemini-service.js';
 
 /**
  * Context Analyzer - Analyzes repository context and PR changes
@@ -22,8 +22,7 @@ class ContextAnalyzer {
     
     // Initialize Gemini for failure analysis
     if (process.env.GEMINI_API_KEY) {
-      this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      this.model = this.genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+      this.gemini = getGeminiService();
     }
   }
 
@@ -421,8 +420,7 @@ CONFIDENCE: [level]
 SUGGESTED_FIX: [description]
 PRIORITY: [level]`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = result.response.text();
+      const response = await this.gemini.generate(prompt);
 
       return this.parseGeminiAnalysis(response);
     } catch (error) {
