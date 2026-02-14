@@ -1,0 +1,49 @@
+name: AI PR Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Permissions required for the workflow to read the repository and post review comments
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    
+    # Resilience Logic:
+    # 1. Skip Dependabot PRs: They do not have access to repository secrets by default.
+    # 2. Secret Availability Check: Ensure GEMINI_API_KEY is present. This prevents the 
+    #    workflow from failing when triggered from forks or environments where secrets 
+    #    are not configured.
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      secrets.GEMINI_API_KEY != ''
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch all history to allow the AI to analyze diffs between branches
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        # Using 'npm ci' for consistent, reproducible builds in CI environments
+        run: npm ci
+
+      - name: Run AI PR Reviewer
+        # The GeminiService and CLI logic are expected to handle the provided API key.
+        # If the workflow passes the 'if' guard, these secrets are guaranteed to be available.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: npm run review
