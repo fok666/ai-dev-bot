@@ -1,0 +1,98 @@
+version: '1.0'
+
+# Bot behavior settings
+bot:
+  enabled: true
+  mode: 'autonomous'  # autonomous | supervised
+  schedule: '0 2 * * *'  # Cron schedule
+  
+# Document locations
+documents:
+  sdd: 'SDD.md'
+  roadmap: 'ROADMAP.md'
+  contributing: 'CONTRIBUTING.md'
+  
+# Code generation settings
+codeGen:
+  languages:
+    - javascript
+    - typescript
+    - python
+  style:
+    javascript: 'prettier'
+    typescript: 'prettier'
+    python: 'black'
+  testCoverage:
+    minimum: 80
+
+# Issue management
+issues:
+  enableTaskGeneration: true
+  enableMemory: true
+  labelPrefix: 'ai-bot'
+  labels:
+    priority:
+      - 'priority-high'
+      - 'priority-medium'
+      - 'priority-low'
+    status:
+      - 'status-ready'
+      - 'status-in-progress'
+      - 'status-blocked'
+      - 'status-review'
+      - 'status-done'
+    type:
+      - 'type-feature'
+      - 'type-bugfix'
+      - 'type-refactor'
+      - 'type-docs'
+  autoClose: true
+  closeOnMerge: true
+  retentionDays: 90
+    
+# PR management
+pullRequests:
+  autoCreate: true
+  autoMerge: false
+  linkToIssue: true
+  autoMergeConditions:
+    allChecksPassed: true
+    minApprovals: 1
+    noRequestedChanges: true
+    maxLinesChanged: 500
+  branchPrefix: 'ai-bot/'
+  reviewers: []
+  labels:
+    - 'ai-generated'
+    - 'automated'
+    
+# Testing requirements
+testing:
+  runTests: false  # Disabled for initial POC
+  frameworks:
+    javascript: 'jest'
+    python: 'pytest'
+  requiredChecks: []
+    
+# Self-improvement
+selfImprovement:
+  enabled: true
+  metricsTracking: true
+  configOptimization: 'manual-approval'
+  
+# Agile practices
+agile:
+  sprintLength: 14
+  storyPointsPerSprint: 20
+  taskPrioritization: 'roadmap-driven'
+  
+# Safety & constraints
+safety:
+  maxFilesPerPR: 15
+  maxLinesPerPR: 1000
+  requireHumanReview:
+    - 'critical-security'
+    - 'database-migrations'
+    - 'config-changes'
+  protectedPaths:
+    - '.github/workflows/'

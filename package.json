@@ -1,0 +1,24 @@
+{
+  "name": "ai-dev-bot",
+  "version": "1.0.0",
+  "description": "Gemini-CLI based GitHub AI coding bot with issue-based memory",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ai",
+    "automation",
+    "github",
+    "gemini"
+  ],
+  "author": "AI-Dev-Bot",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.15.0",
+    "@octokit/rest": "^20.0.2",
+    "js-yaml": "^4.1.0",
+    "marked": "^12.0.0"
+  }
+}

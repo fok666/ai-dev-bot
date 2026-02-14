@@ -1,0 +1,186 @@
+name: AI Development Bot
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Specific issue number to work on'
+        required: false
+      repository:
+        description: 'Target repository'
+        required: false
+  issues:
+    types: [opened, labeled, edited, assigned]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'ai-bot-task'))
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        run: npm install
+          
+      - name: Authenticate GitHub CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GITHUB_TOKEN" | gh auth login --with-token
+          
+      - name: Load Configuration
+        id: config
+        run: |
+          node scripts/load-config.js
+          
+      - name: Find Next Issue
+        id: issue
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.inputs.issue_number }}" ]; then
+            echo "issue_number=${{ github.event.inputs.issue_number }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "issues" ]; then
+            echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          else
+            node scripts/issue-manager.js find-next-task
+          fi
+          
+      - name: Check if issue found
+        id: check_issue
+        run: |
+          if [ -z "${{ steps.issue.outputs.issue_number }}" ]; then
+            echo "No issues to process"
+            echo "has_issue=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_issue=true" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Load Issue Context
+        if: steps.check_issue.outputs.has_issue == 'true'
+        id: context
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/issue-manager.js load-context \
+            --issue="${{ steps.issue.outputs.issue_number }}"
+          
+      - name: Update Issue Status to In Progress
+        if: steps.check_issue.outputs.has_issue == 'true'
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ steps.issue.outputs.issue_number }}" \
+            --body "🤖 **Started execution** at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          gh issue edit "${{ steps.issue.outputs.issue_number }}" \
+            --add-label "status-in-progress" \
+            --remove-label "status-ready" || true
+          
+      - name: Execute Task
+        if: steps.check_issue.outputs.has_issue == 'true'
+        id: execute
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/orchestrator.js execute \
+            --issue="${{ steps.issue.outputs.issue_number }}" \
+            --context="${{ steps.context.outputs.context_file }}"
+            
+      - name: Create Branch and Commit (Placeholder)
+        if: steps.check_issue.outputs.has_issue == 'true' && steps.execute.outputs.has_changes == 'true'
+        run: |
+          git config --global user.name "AI Dev Bot"
+          git config --global user.email "ai-bot@users.noreply.github.com"
+          
+          BRANCH_NAME="${{ steps.execute.outputs.branch }}"
+          git checkout -b "$BRANCH_NAME" || git checkout "$BRANCH_NAME"
+          
+          # Create a placeholder commit (in real implementation, bot would generate actual code)
+          echo "# AI-Generated Implementation Plan" > IMPLEMENTATION.md
+          echo "" >> IMPLEMENTATION.md
+          echo "Issue: #${{ steps.issue.outputs.issue_number }}" >> IMPLEMENTATION.md
+          echo "Generated: $(date)" >> IMPLEMENTATION.md
+          echo "" >> IMPLEMENTATION.md
+          cat .context-cache/plan-${{ steps.issue.outputs.issue_number }}.json >> IMPLEMENTATION.md
+          
+          git add IMPLEMENTATION.md
+          git commit -m "AI-Bot: Implementation plan for issue #${{ steps.issue.outputs.issue_number }}" || echo "No changes to commit"
+          git push origin "$BRANCH_NAME" --force
+          
+      - name: Create/Update PR
+        if: steps.check_issue.outputs.has_issue == 'true' && steps.execute.outputs.has_changes == 'true'
+        id: pr
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/pr-manager.js create \
+            --branch="${{ steps.execute.outputs.branch }}" \
+            --title="${{ steps.execute.outputs.pr_title }}" \
+            --issue="${{ steps.issue.outputs.issue_number }}"
+            
+      - name: Link PR to Issue
+        if: steps.check_issue.outputs.has_issue == 'true' && steps.execute.outputs.has_changes == 'true'
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ steps.issue.outputs.issue_number }}" \
+            --body "📝 Created PR #${{ steps.pr.outputs.pr_number }}: ${{ steps.pr.outputs.pr_url }}"
+          gh issue edit "${{ steps.issue.outputs.issue_number }}" \
+            --add-label "status-review" \
+            --remove-label "status-in-progress" || true
+            
+      - name: Run Tests
+        if: steps.check_issue.outputs.has_issue == 'true'
+        run: |
+          node scripts/testing.js run-all
+          
+      - name: Log Metrics to Issue
+        if: always() && steps.check_issue.outputs.has_issue == 'true'
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/issue-manager.js log-execution \
+            --issue="${{ steps.issue.outputs.issue_number }}" \
+            --execution-id="${{ github.run_id }}" \
+            --status="${{ job.status }}"
+          
+      - name: Handle Failure
+        if: failure() && steps.check_issue.outputs.has_issue == 'true'
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ steps.issue.outputs.issue_number }}" \
+            --body "❌ **Execution failed**. See [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          gh issue edit "${{ steps.issue.outputs.issue_number }}" \
+            --add-label "status-blocked" \
+            --remove-label "status-in-progress" || true
