@@ -53,7 +53,7 @@ ai-dev-bot/
 
 ## Continuous Delivery Workflow
 
-We follow continuous delivery principles (Dave Farley's approach):
+We follow continuous delivery principles (CICD approach):
 
 - **Small batches**: One feature, one PR
 - **Trunk-based development**: Short-lived branches (hours, not days)

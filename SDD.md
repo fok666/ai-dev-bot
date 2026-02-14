@@ -578,7 +578,7 @@ selfImprovement:
   metricsTracking: true
   configOptimization: 'manual-approval'  # manual-approval | automatic
   
-# CI/CD practices (Dave Farley approved)
+# CI/CD practices
 agile:
   continuousDelivery: true
   smallBatchSize: true  # Small, frequent changes
@@ -639,7 +639,7 @@ learning:
 
 ### 6.1 Continuous Integration & Deployment
 
-The bot follows continuous delivery practices (making Dave Farley proud):
+The bot follows continuous delivery practices:
 
 **Principles:**
 - Small batch sizes (single task, single PR)
@@ -695,7 +695,7 @@ Queue by priority
 Deploy continuously
 ```
 
-**Dave Farley's Principles Applied:**
+**Continuous Delivery Principles Applied:**
 - Every change must be independently deployable
 - No task should take more than a day
 - Always work on trunk (main branch)
@@ -729,7 +729,7 @@ Deploy continuously
 
 ### 7.1 Performance Metrics
 
-Track and optimize (CI/CD metrics):
+Track and optimize (Continuous Delivery metrics):
 
 - **Code Quality**
   - Merge rate (target: >80%)
@@ -738,7 +738,7 @@ Track and optimize (CI/CD metrics):
   - Code coverage (target: >80%)
   - Build reliability (target: >95%)
 
-- **Flow Efficiency (Dave Farley metrics)**
+- **Flow Efficiency (Continuous Delivery metrics)**
   - Cycle time: Issue open → merged (target: <8 hours)
   - Lead time: Commit → production (target: <30 min)
   - Deployment frequency (target: multiple per day)
