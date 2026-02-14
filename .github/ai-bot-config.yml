@@ -121,10 +121,12 @@ selfImprovement:
   metricsTracking: true
   configOptimization: 'manual-approval'
   
-# Agile practices
+# CI/CD practices (continuous delivery)
 agile:
-  sprintLength: 14
-  storyPointsPerSprint: 20
+  continuousDelivery: true
+  smallBatchSize: true  # Small, frequent changes
+  trunkBasedDevelopment: true
+  maxWIP: 3  # Work in progress limit
   taskPrioritization: 'roadmap-driven'
   
 # Safety & constraints

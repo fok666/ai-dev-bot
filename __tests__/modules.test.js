@@ -157,11 +157,11 @@ describe('SDD Compliance', () => {
     expect(sddContent).toContain('Lead Time');
   });
 
-  test('SDD should reference Dave Farley principles', () => {
+  test('SDD should reference Continuous Delivery principles', () => {
     const sddPath = path.join(process.cwd(), 'SDD.md');
     const sddContent = fs.readFileSync(sddPath, 'utf8');
     
-    expect(sddContent).toContain('Dave Farley');
+    expect(sddContent).toContain('Continuous Delivery Principles');
   });
 
   test('SDD should have issue-based memory system', () => {
