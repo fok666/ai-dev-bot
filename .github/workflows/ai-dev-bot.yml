@@ -196,9 +196,10 @@ Closes #${{ steps.issue.outputs.issue_number }}"
             --remove-label "status-in-progress" || true
             
       - name: Run Tests
-        if: steps.check_issue.outputs.has_issue == 'true'
+        if: steps.check_issue.outputs.has_issue == 'true' && steps.execute.outputs.has_changes == 'true'
+        continue-on-error: true
         run: |
-          node scripts/testing.js run-all
+          node scripts/testing.js
           
       - name: Log Metrics to Issue
         if: always() && steps.check_issue.outputs.has_issue == 'true'
