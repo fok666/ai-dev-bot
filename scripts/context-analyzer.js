@@ -348,12 +348,22 @@ class ContextAnalyzer {
       // Analyze with Gemini if available
       let analysis = null;
       if (this.model) {
-      
-      if (process.env.GITHUB_OUTPUT) {
-        fs.appendFileSync(process.env.GITHUB_OUTPUT, `analysis_file=${analysisFile}\n`);
-      } else {
-        console.log(`::set-output name=analysis_file::${analysisFile}`);
-      }
+        const prompt = `Analyze this GitHub Actions workflow failure:
+
+**Workflow:** ${context.run.name}
+**Status:** ${context.run.conclusion}
+**Errors:**
+${context.errors.join('\n')}
+
+**Recent Commits:**
+${context.recentCommits.map(c => `- ${c.sha}: ${c.message} (${c.author})`).join('\n')}
+
+Provide:
+1. Root cause analysis
+2. Suggested fixes
+3. Prevention strategies`;
+
+        analysis = await this.gemini.generate(prompt);
       }
 
       const result = {
@@ -366,7 +376,12 @@ class ContextAnalyzer {
       fs.writeFileSync(analysisFile, JSON.stringify(result, null, 2));
 
       console.log(`✅ Analysis complete`);
-      console.log(`::set-output name=analysis_file::${analysisFile}`);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `analysis_file=${analysisFile}\n`);
+      } else {
+        console.log(`::set-output name=analysis_file::${analysisFile}`);
+      }
 
       return result;
     } catch (error) {
@@ -507,17 +522,17 @@ PRIORITY: [level]`;
         }
       }
 
+      // Save all analyses
+      const analysesFile = path.join(process.cwd(), '.context-cache', 'workflow-analyses.json');
+      fs.writeFileSync(analysesFile, JSON.stringify(analyses, null, 2));
+
+      console.log(`✅ Analyzed ${analyses.length} failures`);
       
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `analyses_file=${analysesFile}\n`);
       } else {
         console.log(`::set-output name=analyses_file::${analysesFile}`);
       }
-      const analysesFile = path.join(process.cwd(), '.context-cache', 'workflow-analyses.json');
-      fs.writeFileSync(analysesFile, JSON.stringify(analyses, null, 2));
-
-      console.log(`✅ Analyzed ${analyses.length} failures`);
-      console.log(`::set-output name=analyses_file::${analysesFile}`);
 
       return analyses;
     } catch (error) {
