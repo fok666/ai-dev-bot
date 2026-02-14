@@ -278,7 +278,7 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 - Link PRs to issues for full lifecycle tracking
 - Query issue history for context
 - Update issue status based on PR outcomes
-- Generate sprint reports from issue data
+- Generate throughput metrics from issue data
 - Create investigation issues for pipeline failures
 - Track recurring CI/CD problems
 - Link pipeline failures to related code changes
@@ -287,7 +287,7 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 - GitHub Issues API
 - Issue labels for categorization (status, priority, type)
 - Issue comments for state persistence
-- Milestones for sprint tracking
+- Milestones for time-based batching
 - Project boards for visualization
 - GitHub Actions API for workflow status
 
@@ -330,17 +330,17 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 ### 3.1.5 Issue-Based Task Generation Flow
 
 ```
-1. Sprint Start or Roadmap Update
+1. Roadmap Update or Continuous Sync
    ↓
 2. Issue Manager reads ROADMAP.md
    ↓
-3. Parse tasks for current sprint
+3. Parse ready tasks (small batches)
    ↓
 4. For each task: Create GitHub Issue
    ↓
-5. Set labels: sprint-N, priority-high/medium/low, status-ready
+5. Set labels: priority-high/medium/low, status-ready, complexity-S/M/L
    ↓
-6. Add to sprint milestone
+6. Add to time-based milestone (if used)
    ↓
 7. Store task breakdown in issue description
    ↓
@@ -578,10 +578,12 @@ selfImprovement:
   metricsTracking: true
   configOptimization: 'manual-approval'  # manual-approval | automatic
   
-# Agile practices
+# CI/CD practices (Dave Farley approved)
 agile:
-  sprintLength: 14  # days
-  storyPointsPerSprint: 20
+  continuousDelivery: true
+  smallBatchSize: true  # Small, frequent changes
+  trunkBasedDevelopment: true
+  maxWIP: 3  # Work in progress limit
   taskPrioritization: 'roadmap-driven'
   
 # Safety & constraints
@@ -633,57 +635,72 @@ learning:
 
 ---
 
-## 6. Agile Development Workflow
+## 6. Continuous Delivery Workflow
 
-### 6.1 Sprint Planning
+### 6.1 Continuous Integration & Deployment
 
-The bot follows a structured sprint approach using GitHub Issues:
+The bot follows continuous delivery practices (making Dave Farley proud):
 
-1. **Sprint Start (Day 1)**
-   - Read ROADMAP.md for current sprint goals
-   - Create GitHub Milestone for sprint
-   - Generate issues for each roadmap task
-   - Set labels (priority, type, sprint-N)
-   - Estimate complexity using Gemini (add to issue)
-   - Link dependent issues
-   - Assign issues to ai-dev-bot
+**Principles:**
+- Small batch sizes (single task, single PR)
+- Trunk-based development (short-lived branches)
+- Continuous integration (always deployable main)
+- Fast feedback loops (quick builds, quick reviews)
+- Low work-in-progress (max 3 concurrent tasks)
 
-2. **Development Phase (Days 2-13)**
+**Continuous Flow:**
+
+1. **Task Selection (Continuous)**
+   - Read ROADMAP.md for prioritized backlog
    - Query issues: `is:open label:status-ready assignee:ai-dev-bot`
-   - Select highest priority task
+   - Select highest priority task (respect WIP limit)
+   - Estimate complexity: S/M/L (not story points)
+   - Link dependent issues
+
+2. **Implementation (Small Batches)**
    - Update issue label to `status-in-progress`
    - Comment: "🤖 Starting work on this task"
    - Load previous context from issue comments
-   - Create feature branch (named after issue)
-   - Implement code following SDD
+   - Create short-lived feature branch (hours, not days)
+   - Implement minimal viable change
+   - Write tests first or alongside (TDD when possible)
+   - Keep changes small and focused
    - Comment progress updates to issue
-   - Generate relevant tests
    - Create PR linked to issue (`Closes #123`)
    - Update issue label to `status-review`
 
-3. **Sprint Review (Day 14)**
-   - Query all issues in sprint milestone
-   - Generate sprint report from issue data
-   - Calculate velocity (completed story points)
-   - Post summary comment on milestone
-   - Close completed issues
-   - Move incomplete issues to next sprint
+3. **Integration (Continuous)**
+   - Fast CI pipeline (<10 min)
+   - Automated testing (unit, integration, e2e)
+   - Quick PR review cycle
+   - Merge to main frequently (multiple times per day)
+   - Close completed issues immediately
+   - Deploy continuously (if auto-merge enabled)
 
 ### 6.2 Task Breakdown
 
 For each task in the roadmap:
 
 ```
-Epic → Stories → Tasks → Subtasks
+Feature → Small Batches → Deployable Increments
   ↓
 Gemini analyzes complexity
   ↓
-Break into implementable chunks
+Break into smallest deployable units
   ↓
-Estimate effort (S/M/L)
+Size: S (<2hr), M (<4hr), L (<8hr)
   ↓
 Queue by priority
+  ↓
+Deploy continuously
 ```
+
+**Dave Farley's Principles Applied:**
+- Every change must be independently deployable
+- No task should take more than a day
+- Always work on trunk (main branch)
+- Fast, reliable automated tests
+- Continuous peer review through automation
 
 ### 6.3 Code Review Process
 
@@ -712,19 +729,22 @@ Queue by priority
 
 ### 7.1 Performance Metrics
 
-Track and optimize:
+Track and optimize (CI/CD metrics):
 
 - **Code Quality**
   - Merge rate (target: >80%)
   - Review comment count (target: <5 per PR)
-  - CI failure rate (target: <10%)
+  - CI failure rate (target: <5%)
   - Code coverage (target: >80%)
+  - Build reliability (target: >95%)
 
-- **Efficiency**
-  - Time to create PR (target: <30 min)
-  - Time to merge (target: <24 hours)
-  - Lines of code per hour
-  - Tasks completed per sprint
+- **Flow Efficiency (Dave Farley metrics)**
+  - Cycle time: Issue open → merged (target: <8 hours)
+  - Lead time: Commit → production (target: <30 min)
+  - Deployment frequency (target: multiple per day)
+  - Change failure rate (target: <5%)
+  - Mean time to recovery (target: <1 hour)
+  - Batch size: Files changed per PR (target: <10)
 
 - **Collaboration**
   - Human review feedback sentiment
@@ -745,7 +765,8 @@ Track and optimize:
    - Extract coding preferences from successful PRs
    - Recognize successful approaches by issue type
    - Detect antipatterns causing issue failures
-   - Analyze time-to-completion by task category
+   - Analyze cycle time by task category
+   - Track deployment success patterns
 
 3. **Configuration Updates**
    - Adjust Gemini prompts based on issue outcomes
@@ -767,19 +788,23 @@ Track and optimize:
 ```python
 # Pseudo-code for self-optimization
 def optimize_performance():
-    metrics = collect_last_sprint_metrics()
+    metrics = collect_continuous_metrics()
     
-    if metrics.merge_rate < 0.8:
-        analyze_rejection_reasons()
-        adjust_code_generation_prompts()
+    if metrics.cycle_time > target_cycle_time:
+        analyze_bottlenecks()
+        reduce_batch_size()
         
-    if metrics.review_comments > 5:
-        identify_common_feedback()
-        update_style_guide_compliance()
+    if metrics.change_failure_rate > 0.05:
+        improve_test_coverage()
+        enhance_pre_commit_validation()
         
-    if metrics.ci_failure_rate > 0.1:
-        improve_test_generation()
-        add_pre_pr_validation()
+    if metrics.deployment_frequency < daily_target:
+        identify_merge_blockers()
+        streamline_review_process()
+        
+    if metrics.lead_time > 30_minutes:
+        optimize_ci_pipeline()
+        parallelize_tests()
         
     generate_optimization_pr()
 ```
@@ -812,13 +837,13 @@ refactor: Optimize database query performance
 - Acceptance criteria (checkboxes)
 - Technical requirements from SDD
 - Dependencies and blockers
-- Story point estimate
+- Complexity estimate (S/M/L)
 
 **Issue Labels:** Categorical classification
 - Priority: `priority-high`, `priority-medium`, `priority-low`
 - Status: `status-ready`, `status-in-progress`, `status-review`, `status-done`
 - Type: `type-feature`, `type-bugfix`, `type-refactor`
-- Sprint: `sprint-1`, `sprint-2`
+- Complexity: `complexity-S`, `complexity-M`, `complexity-L`
 - Special: `ai-bot-task`, `ai-generated`
 
 **Issue Comments:** Execution history and memory
@@ -829,10 +854,10 @@ refactor: Optimize database query performance
 - Error messages and retry information
 - Performance metrics
 
-**Issue Milestones:** Sprint tracking
-- Groups issues by sprint
-- Tracks sprint progress
-- Enables velocity calculation
+**Issue Milestones:** Time-based batching
+- Groups issues by release/milestone
+- Tracks throughput over time
+- Enables cycle time analysis
 
 ### 8.3 Memory Storage Pattern
 
@@ -841,8 +866,8 @@ refactor: Optimize database query performance
 ## Task: Implement user authentication
 
 **Priority:** High
-**Story Points:** 8
-**Sprint:** 1
+**Complexity:** M (4-8 hours)
+**Target Cycle Time:** <8 hours
 
 ### Description
 Implement JWT-based authentication for the API endpoints.
@@ -1037,17 +1062,17 @@ gh issue list \
   --limit 1
 ```
 
-**Sprint Status:**
+**Milestone Status:**
 ```bash
-# All issues in current sprint
+# All issues in current milestone
 gh issue list \
-  --milestone "Sprint 5" \
+  --milestone "v1.2.0" \
   --state all
 ```
 
-**Performance Analysis:**
+**Throughput Analysis:**
 ```bash
-# Completed issues with metrics
+# Completed issues with cycle time metrics
 gh issue list \
   --label "status-done" \
   --label "ai-generated" \
@@ -1987,19 +2012,23 @@ Create GitHub Pages dashboard showing:
 After Phase 3 (week 8):
 - [ ] Bot successfully creates PRs in 3+ repositories
 - [ ] 70%+ PR merge rate
+- [ ] <8 hour average cycle time
 - [ ] Zero security incidents
 - [ ] <5 average review comments per PR
 - [ ] 80%+ code coverage on generated code
 - [ ] Follows roadmap priorities correctly
+- [ ] Multiple daily deployments
 
 ### 16.2 Production Success Metrics
 
 After Phase 5 (week 12):
 - [ ] 85%+ PR merge rate
-- [ ] <48 hour average time to merge
+- [ ] <8 hour average cycle time (issue → merge)
+- [ ] <30 min lead time (commit → deploy)
 - [ ] 90%+ test coverage
 - [ ] Positive team feedback
-- [ ] Demonstrable velocity improvement
+- [ ] 5+ deployments per day
+- [ ] <5% change failure rate
 - [ ] Active self-improvement cycles
 
 ### 16.3 Long-term Goals
@@ -2008,8 +2037,10 @@ Within 6 months:
 - Bot handles 40%+ of routine development tasks
 - Human developers focus on complex features
 - Consistent code quality across all repos
-- Roadmap execution predictability >80%
-- Team productivity increase of 25%+
+- Continuous delivery of value (multiple deploys/day)
+- Mean cycle time <4 hours
+- Change failure rate <3%
+- Team throughput increase of 25%+
 
 ---
 
@@ -2102,8 +2133,10 @@ This SDD is a living document:
 - **Roadmap:** Project roadmap defining features and priorities
 - **PR:** Pull Request in GitHub
 - **CI/CD:** Continuous Integration/Continuous Deployment
-- **Sprint:** Fixed time period for development (typically 2 weeks)
-- **Story Point:** Unit of effort estimation in agile development
+- **Cycle Time:** Time from task start to deployment (key metric)
+- **Lead Time:** Time from commit to production (key metric)
+- **Batch Size:** Size of change (small is better for CD)
+- **WIP:** Work In Progress (limit for flow efficiency)
 - **Orchestrator:** Central coordination module of the bot
 - **Context Analyzer:** Module that understands repository state
 - **Self-Improvement:** Bot's capability to optimize itself
@@ -2111,7 +2144,7 @@ This SDD is a living document:
 - **Bot Memory:** Persistent state stored in GitHub Issue comments
 - **Task Issue:** GitHub Issue representing a single development task
 - **Issue Context:** Historical information and decisions stored in issue comments
-- **Milestone:** GitHub Milestone representing a sprint or release
+- **Milestone:** GitHub Milestone for time-based grouping (optional)
 
 ---
 
@@ -2122,15 +2155,17 @@ This SDD is a living document:
 ```markdown
 # Project Roadmap
 
-## Sprint 1 (Jan 1-14, 2026)
-- [ ] User Authentication (8 points) - @ai-dev-bot
-- [ ] Database Schema (5 points) - @developer
-- [ ] API Foundation (5 points) - @ai-dev-bot
+## High Priority (Deploy Continuously)
+- [ ] User Authentication (M) - @ai-dev-bot
+- [ ] Database Schema (M) - @developer
+- [ ] API Foundation (M) - @ai-dev-bot
 
-## Sprint 2 (Jan 15-28, 2026)
-- [ ] User Profile Management (8 points)
-- [ ] Password Reset Flow (5 points)
-- [ ] Email Integration (3 points)
+## Medium Priority (Next in Queue)
+- [ ] User Profile Management (M)
+- [ ] Password Reset Flow (S)
+- [ ] Email Integration (S)
+
+# Complexity: S (<2hr), M (2-8hr), L (8-24hr, consider splitting)
 ```
 
 ### Appendix B: Sample Issue Templates
@@ -2140,8 +2175,9 @@ This SDD is a living document:
 ```markdown
 ## Task: {TASK_NAME}
 
-**From Roadmap:** Sprint {N}, {STORY_POINTS} points
+**From Roadmap:** Continuous delivery backlog
 **Priority:** High/Medium/Low
+**Complexity:** S/M/L
 **Type:** Feature/Bugfix/Refactor/Docs
 
 ### Description
@@ -2187,6 +2223,7 @@ Section {X.Y}: {SECTION_NAME}
 **Confidence:** {CONFIDENCE}
 **Failure Type:** {TYPE}
 **Priority:** {PRIORITY}
+**Target Cycle Time:** <2 hours (fast feedback!)
 
 ### Error Messages
 ```
@@ -2201,7 +2238,7 @@ Section {X.Y}: {SECTION_NAME}
 ### Suggested Fix
 {SUGGESTED_FIX_DESCRIPTION}
 
-**Estimated Effort:** {EFFORT} story points
+**Estimated Effort:** {EFFORT} (S/M/L)
 
 ### Steps to Reproduce
 1. {STEP_1}
@@ -2261,9 +2298,10 @@ Section {X.Y}: {SECTION_NAME}
 Closes #{ISSUE_NUMBER}
 
 ## Related Items
-- Roadmap: Sprint {N}, Task: {TASK_NAME}
+- Roadmap: Task: {TASK_NAME}
 - SDD Reference: Section {X.Y}
 - Issue: #{ISSUE_NUMBER}
+- Cycle Time: {TIME} (target: <8hr)
 
 ## Changes
 - {SUMMARY_OF_CHANGES}
@@ -2323,8 +2361,8 @@ See Section 5 for full configuration examples.
 - `type-investigate` - Pipeline failure investigation
 - `type-ci-cd` - CI/CD pipeline related
 
-**Sprint Labels:**
-- `sprint-1`, `sprint-2`, etc. - Sprint assignment
+**Complexity Labels:**
+- `complexity-S`, `complexity-M`, `complexity-L` - Task size (time estimate)
 
 **Bot Labels:**
 - `ai-generated` - Created by AI-Dev-Bot
@@ -2378,6 +2416,8 @@ interface IssueManager {
   parseRoadmap(roadmapPath: string): RoadmapTask[];
   linkPR(issueNumber: number, prNumber: number): void;
   getExecutionHistory(issueNumber: number): ExecutionRecord[];
+  getCycleTime(issueNumber: number): number;  // Time from open to closed
+  getThroughput(timeWindow: string): number;  // Issues completed per period
   createInvestigationIssue(failure: WorkflowFailure, analysis: FailureAnalysis): Issue;
   checkDuplicateInvestigation(workflowName: string, errorSignature: string): Issue | null;
 }
