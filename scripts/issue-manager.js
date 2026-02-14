@@ -63,7 +63,12 @@ class IssueManager {
       }
 
       console.log(`✅ Found task: #${selectedIssue.number} - ${selectedIssue.title}`);
-      console.log(`::set-output name=issue_number::${selectedIssue.number}`);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `issue_number=${selectedIssue.number}\n`);
+      } else {
+        console.log(`::set-output name=issue_number::${selectedIssue.number}`);
+      }
       
       return selectedIssue;
     } catch (error) {
@@ -123,7 +128,12 @@ class IssueManager {
       fs.writeFileSync(contextFile, JSON.stringify(context, null, 2));
 
       console.log(`✅ Context loaded: ${executionHistory.length} previous attempts`);
-      console.log(`::set-output name=context_file::${contextFile}`);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `context_file=${contextFile}\n`);
+      } else {
+        console.log(`::set-output name=context_file::${contextFile}`);
+      }
 
       return context;
     } catch (error) {
@@ -244,7 +254,12 @@ ${status === 'success' ? '✅ Execution completed successfully' : '❌ Execution
       // Save to temp file
       const tempDir = path.join(process.cwd(), '.context-cache');
       if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `tasks_file=${tasksFile}\n`);
+      } else {
+        console.log(`::set-output name=tasks_file::${tasksFile}`);
+      }
       }
 
       const tasksFile = path.join(tempDir, 'roadmap-tasks.json');
@@ -384,7 +399,12 @@ Auto-generated task from ROADMAP.md
         });
 
         console.log(`   ✅ Created investigation issue: ${targetOwner}/${targetRepo}#${issue.number}`);
-        console.log(`   🔗 ${issue.html_url}`);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `issues_created=${issuesCreated}\n`);
+      } else {
+        console.log(`::set-output name=issues_created::${issuesCreated}`);
+      }
         issuesCreated++;
       }
 

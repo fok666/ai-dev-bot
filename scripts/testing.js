@@ -400,10 +400,17 @@ class TestRunner {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     // Set GitHub Actions output
-    console.log(`::set-output name=success::${aggregated.success}`);
-    console.log(`::set-output name=total::${aggregated.total}`);
-    console.log(`::set-output name=passed::${aggregated.passed}`);
-    console.log(`::set-output name=failed::${aggregated.failed}`);
+    if (process.env.GITHUB_OUTPUT) {
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `success=${aggregated.success}\n`);
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `total=${aggregated.total}\n`);
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `passed=${aggregated.passed}\n`);
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `failed=${aggregated.failed}\n`);
+    } else {
+      console.log(`::set-output name=success::${aggregated.success}`);
+      console.log(`::set-output name=total::${aggregated.total}`);
+      console.log(`::set-output name=passed::${aggregated.passed}`);
+      console.log(`::set-output name=failed::${aggregated.failed}`);
+    }
 
     return aggregated;
   }

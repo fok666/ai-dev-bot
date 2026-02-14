@@ -150,7 +150,11 @@ class ContextAnalyzer {
       console.log(`✅ Found ${recentFailures.length} failed workflows`);
 
       if (recentFailures.length > 0) {
-        console.log('::set-output name=has_failures::true');
+        if (process.env.GITHUB_OUTPUT) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'has_failures=true\n');
+        } else {
+          console.log('::set-output name=has_failures::true');
+        }
         
         const failuresFile = path.join(process.cwd(), '.context-cache', 'failures.json');
         const tempDir = path.dirname(failuresFile);
@@ -159,9 +163,18 @@ class ContextAnalyzer {
         }
         
         fs.writeFileSync(failuresFile, JSON.stringify(recentFailures, null, 2));
-        console.log(`::set-output name=failures_file::${failuresFile}`);
+        
+        if (process.env.GITHUB_OUTPUT) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `failures_file=${failuresFile}\n`);
+        } else {
+          console.log(`::set-output name=failures_file::${failuresFile}`);
+        }
       } else {
-        console.log('::set-output name=has_failures::false');
+        if (process.env.GITHUB_OUTPUT) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'has_failures=false\n');
+        } else {
+          console.log('::set-output name=has_failures::false');
+        }
       }
 
       return recentFailures;
@@ -218,7 +231,11 @@ class ContextAnalyzer {
       console.log(`✅ Total failures found across all repositories: ${allFailures.length}`);
       
       if (allFailures.length > 0) {
-        console.log('::set-output name=has_failures::true');
+        if (process.env.GITHUB_OUTPUT) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'has_failures=true\n');
+        } else {
+          console.log('::set-output name=has_failures::true');
+        }
         
         const failuresFile = path.join(process.cwd(), '.context-cache', 'failures-multi-repo.json');
         const tempDir = path.dirname(failuresFile);
@@ -227,7 +244,12 @@ class ContextAnalyzer {
         }
         
         fs.writeFileSync(failuresFile, JSON.stringify(allFailures, null, 2));
-        console.log(`::set-output name=failures_file::${failuresFile}`);
+        
+        if (process.env.GITHUB_OUTPUT) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `failures_file=${failuresFile}\n`);
+        } else {
+          console.log(`::set-output name=failures_file::${failuresFile}`);
+        }
         
         // Output summary
         console.log('');
@@ -241,7 +263,11 @@ class ContextAnalyzer {
           console.log(`   ${repo}: ${count} failure(s)`);
         });
       } else {
-        console.log('::set-output name=has_failures::false');
+        if (process.env.GITHUB_OUTPUT) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'has_failures=false\n');
+        } else {
+          console.log('::set-output name=has_failures::false');
+        }
       }
       
       return allFailures;
@@ -322,7 +348,12 @@ class ContextAnalyzer {
       // Analyze with Gemini if available
       let analysis = null;
       if (this.model) {
-        analysis = await this.analyzeWithGemini(context);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `analysis_file=${analysisFile}\n`);
+      } else {
+        console.log(`::set-output name=analysis_file::${analysisFile}`);
+      }
       }
 
       const result = {
@@ -476,7 +507,12 @@ PRIORITY: [level]`;
         }
       }
 
-      // Save all analyses
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `analyses_file=${analysesFile}\n`);
+      } else {
+        console.log(`::set-output name=analyses_file::${analysesFile}`);
+      }
       const analysesFile = path.join(process.cwd(), '.context-cache', 'workflow-analyses.json');
       fs.writeFileSync(analysesFile, JSON.stringify(analyses, null, 2));
 

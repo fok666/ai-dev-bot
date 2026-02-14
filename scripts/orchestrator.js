@@ -95,10 +95,17 @@ class Orchestrator {
       // Create branch
       const branchName = `ai-bot/issue-${issueNumber}`;
       
-      console.log(`::set-output name=has_changes::true`);
-      console.log(`::set-output name=branch::${branchName}`);
-      console.log(`::set-output name=pr_title::${plan.title || context.issue.title}`);
-      console.log(`::set-output name=plan_file::${planFile}`);
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_changes=true\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `branch=${branchName}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `pr_title=${plan.title || context.issue.title}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `plan_file=${planFile}\n`);
+      } else {
+        console.log(`::set-output name=has_changes::true`);
+        console.log(`::set-output name=branch::${branchName}`);
+        console.log(`::set-output name=pr_title::${plan.title || context.issue.title}`);
+        console.log(`::set-output name=plan_file::${planFile}`);
+      }
 
       // Post execution context to issue
       await this.postExecutionContext(issueNumber, plan, text);

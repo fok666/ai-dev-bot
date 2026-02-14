@@ -239,8 +239,14 @@ Provide ONLY the code without explanations. Format as:
       fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
       console.log(`\n✅ Code generation complete: ${generatedFiles.length} files`);
-      console.log(`::set-output name=generated_count::${generatedFiles.length}`);
-      console.log(`::set-output name=output_dir::${outputDir}`);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `generated_count=${generatedFiles.length}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `output_dir=${outputDir}\n`);
+      } else {
+        console.log(`::set-output name=generated_count::${generatedFiles.length}`);
+        console.log(`::set-output name=output_dir::${outputDir}`);
+      }
 
       return generatedFiles;
     } catch (error) {
@@ -288,7 +294,12 @@ Provide ONLY the code without explanations. Format as:
       }
 
       console.log(`\n✅ Applied ${manifest.files.length} files to repository`);
-      console.log(`::set-output name=applied_count::${manifest.files.length}`);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `applied_count=${manifest.files.length}\n`);
+      } else {
+        console.log(`::set-output name=applied_count::${manifest.files.length}`);
+      }
 
       return manifest.files.length;
     } catch (error) {

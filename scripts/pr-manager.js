@@ -75,8 +75,14 @@ ${plan.testing}
       });
 
       console.log(`✅ PR created: #${pr.number}`);
-      console.log(`::set-output name=pr_number::${pr.number}`);
-      console.log(`::set-output name=pr_url::${pr.html_url}`);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `pr_number=${pr.number}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `pr_url=${pr.html_url}\n`);
+      } else {
+        console.log(`::set-output name=pr_number::${pr.number}`);
+        console.log(`::set-output name=pr_url::${pr.html_url}`);
+      }
 
       // Add labels
       await this.octokit.issues.addLabels({
@@ -147,9 +153,16 @@ Keep response concise (under 200 words).`;
       if (reviewText.includes('REQUEST_CHANGES')) action = 'REQUEST_CHANGES';
 
       console.log(`\n✅ Review decision: ${action}`);
-      console.log(`::set-output name=should_review::true`);
-      console.log(`::set-output name=review_body::${reviewText.replace(/\n/g, ' ')}`);
-      console.log(`::set-output name=review_action::${action}`);
+      
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, 'should_review=true\n');
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_body=${reviewText.replace(/\n/g, ' ')}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_action=${action}\n`);
+      } else {
+        console.log(`::set-output name=should_review::true`);
+        console.log(`::set-output name=review_body::${reviewText.replace(/\n/g, ' ')}`);
+        console.log(`::set-output name=review_action::${action}`);
+      }
 
       return { action, body: reviewText };
     } catch (error) {
@@ -169,7 +182,11 @@ Keep response concise (under 200 words).`;
       const { data: pr } = await this.octokit.pulls.get({
         owner: this.owner,
         repo: this.repo,
-        pull_number: prNumber
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `can_merge=${canMerge}\n`);
+      } else {
+        console.log(`::set-output name=can_merge::${canMerge}`);
+      }
       });
 
       const canMerge = pr.mergeable && 
