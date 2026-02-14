@@ -7,7 +7,14 @@
   "scripts": {
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "npm test -- --watch",
-    "test:coverage": "npm test -- --coverage"
+    "test:coverage": "npm test -- --coverage",
+    "test:integration": "npm test -- --testPathPattern=integration",
+    "test:unit": "npm test -- --testPathPattern='(context-analyzer|issue-manager|gemini-service|modules|config).test.js'",
+    "validate:workflows": "node scripts/validate-workflows.js",
+    "validate:patterns": "node scripts/validate-workflows.js && npm run check:antipatterns",
+    "check:antipatterns": "! grep -r 'grep.*analysis_file' .github/workflows/ || (echo 'ERROR: Found stdout parsing anti-pattern' && exit 1)",
+    "precommit": "npm run validate:workflows && npm run test:unit",
+    "prepush": "npm test && npm run validate:workflows"
   },
   "keywords": [
     "ai",

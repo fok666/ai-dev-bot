@@ -1,0 +1,24 @@
+#!/bin/bash
+# Pre-commit hook to validate changes before commit
+
+set -e
+
+echo "Running pre-commit validations..."
+
+# Check if any workflow files changed
+WORKFLOW_CHANGED=$(git diff --cached --name-only | grep -c '\.github/workflows/' || true)
+
+if [ "$WORKFLOW_CHANGED" -gt 0 ]; then
+  echo "Workflow files changed, validating..."
+  npm run validate:workflows
+fi
+
+# Check if any script files changed
+SCRIPT_CHANGED=$(git diff --cached --name-only | grep -c 'scripts/' || true)
+
+if [ "$SCRIPT_CHANGED" -gt 0 ]; then
+  echo "Script files changed, running unit tests..."
+  npm run test:unit
+fi
+
+echo "✅ Pre-commit validations passed"

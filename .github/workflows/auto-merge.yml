@@ -58,8 +58,12 @@ jobs:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          ISSUE_NUM=$(gh pr view "${{ steps.pr.outputs.pr_number }}" --json body -q '.body' \
-            | grep -oP '(?:Closes|Fixes|Resolves) #\K\d+' | head -n 1 || echo "")
+          # Extract issue number from PR body using jq
+          PR_BODY=$(gh pr view "${{ steps.pr.outputs.pr_number }}" --json body -q '.body')
+          
+          # Parse issue numbers from common patterns
+          ISSUE_NUM=$(echo "$PR_BODY" | grep -oE '(Closes|Fixes|Resolves) #[0-9]+' | head -n 1 | grep -oE '[0-9]+' || echo "")
+          
           echo "issue_number=$ISSUE_NUM" >> $GITHUB_OUTPUT
           
       - name: Check Merge Conditions

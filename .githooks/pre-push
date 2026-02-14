@@ -1,0 +1,14 @@
+#!/bin/bash
+# Pre-push hook to run full test suite before pushing
+
+set -e
+
+echo "Running pre-push validations..."
+
+# Run all tests
+npm test
+
+# Validate workflows
+npm run validate:workflows
+
+echo "✅ Pre-push validations passed"
