@@ -254,17 +254,17 @@ ${status === 'success' ? '✅ Execution completed successfully' : '❌ Execution
       // Save to temp file
       const tempDir = path.join(process.cwd(), '.context-cache');
       if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const tasksFile = path.join(tempDir, 'roadmap-tasks.json');
+      fs.writeFileSync(tasksFile, JSON.stringify(tasks, null, 2));
       
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `tasks_file=${tasksFile}\n`);
       } else {
         console.log(`::set-output name=tasks_file::${tasksFile}`);
       }
-      }
-
-      const tasksFile = path.join(tempDir, 'roadmap-tasks.json');
-      fs.writeFileSync(tasksFile, JSON.stringify(tasks, null, 2));
-      console.log(`::set-output name=tasks_file::${tasksFile}`);
 
       return tasks;
     } catch (error) {
@@ -399,17 +399,17 @@ Auto-generated task from ROADMAP.md
         });
 
         console.log(`   ✅ Created investigation issue: ${targetOwner}/${targetRepo}#${issue.number}`);
+        console.log(`   🔗 ${issue.html_url}`);
+        issuesCreated++;
+      }
+
+      console.log(`\n✅ Created ${issuesCreated} investigation issue(s)`);
       
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `issues_created=${issuesCreated}\n`);
       } else {
         console.log(`::set-output name=issues_created::${issuesCreated}`);
       }
-        issuesCreated++;
-      }
-
-      console.log(`\n✅ Created ${issuesCreated} investigation issue(s)`);
-      console.log(`::set-output name=issues_created::${issuesCreated}`);
 
       return issuesCreated;
     } catch (error) {

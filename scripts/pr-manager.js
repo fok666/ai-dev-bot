@@ -182,18 +182,18 @@ Keep response concise (under 200 words).`;
       const { data: pr } = await this.octokit.pulls.get({
         owner: this.owner,
         repo: this.repo,
-      if (process.env.GITHUB_OUTPUT) {
-        fs.appendFileSync(process.env.GITHUB_OUTPUT, `can_merge=${canMerge}\n`);
-      } else {
-        console.log(`::set-output name=can_merge::${canMerge}`);
-      }
+        pull_number: prNumber
       });
 
       const canMerge = pr.mergeable && 
                       !pr.draft && 
                       pr.mergeable_state === 'clean';
 
-      console.log(`::set-output name=can_merge::${canMerge}`);
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `can_merge=${canMerge}\n`);
+      } else {
+        console.log(`::set-output name=can_merge::${canMerge}`);
+      }
       console.log(`✅ Can merge: ${canMerge}`);
 
       return canMerge;
