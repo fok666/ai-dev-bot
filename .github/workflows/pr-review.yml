@@ -58,16 +58,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           REVIEW_ACTION="${{ steps.review.outputs.review_action }}"
-          REVIEW_BODY="${{ steps.review.outputs.review_body }}"
+          
+          # Write review body to file to avoid shell escaping issues
+          cat << 'REVIEW_EOF' > /tmp/review_body.txt
+          ${{ steps.review.outputs.review_body }}
+          REVIEW_EOF
           
           # Post review based on action
           if [ "$REVIEW_ACTION" == "APPROVE" ]; then
             gh pr review "${{ github.event.pull_request.number }}" \
-              --approve --body "$REVIEW_BODY"
+              --approve --body-file /tmp/review_body.txt
           elif [ "$REVIEW_ACTION" == "REQUEST_CHANGES" ]; then
             gh pr review "${{ github.event.pull_request.number }}" \
-              --request-changes --body "$REVIEW_BODY"
+              --request-changes --body-file /tmp/review_body.txt
           else
             gh pr review "${{ github.event.pull_request.number }}" \
-              --comment --body "$REVIEW_BODY"
+              --comment --body-file /tmp/review_body.txt
           fi
