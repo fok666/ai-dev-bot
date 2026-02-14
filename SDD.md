@@ -195,11 +195,16 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 - Analyze existing codebase structure
 - Identify dependencies and relationships
 - Extract coding standards and patterns
+- Scan GitHub Actions pipeline for failures
+- Analyze workflow run logs and errors
+- Detect patterns in CI/CD failures
 
 **Technologies:**
 - Markdown parsers (for SDD/Roadmap)
 - AST parsers (for code analysis)
 - Pattern matching engines
+- GitHub Actions API for workflow monitoring
+- Log analysis and error detection
 
 #### 2.2.4 Code Generator
 **Responsibility:** Create and modify code following best practices
@@ -274,6 +279,9 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 - Query issue history for context
 - Update issue status based on PR outcomes
 - Generate sprint reports from issue data
+- Create investigation issues for pipeline failures
+- Track recurring CI/CD problems
+- Link pipeline failures to related code changes
 
 **Technologies:**
 - GitHub Issues API
@@ -281,6 +289,7 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 - Issue comments for state persistence
 - Milestones for sprint tracking
 - Project boards for visualization
+- GitHub Actions API for workflow status
 
 ---
 
@@ -291,27 +300,31 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 ```
 1. Cron Trigger (e.g., daily at 2 AM)
    ↓
-2. Issue Manager queries open issues by priority
+2. Context Analyzer scans GitHub Actions for failures
    ↓
-3. Select highest priority "ready" task
+3. If failures found → Create investigation issues
    ↓
-4. Load task context from issue history
+4. Issue Manager queries open issues by priority
    ↓
-5. Context Analyzer gathers code/docs + issue comments
+5. Select highest priority "ready" task
    ↓
-6. Gemini-CLI generates implementation plan
+6. Load task context from issue history
    ↓
-7. Update issue with execution status
+7. Context Analyzer gathers code/docs + issue comments
    ↓
-8. Code Generator creates changes
+8. Gemini-CLI generates implementation plan
    ↓
-9. Testing Module runs validations
+9. Update issue with execution status
    ↓
-10. PR Manager creates PR linked to issue
+10. Code Generator creates changes
    ↓
-11. Update issue with PR link and progress
+11. Testing Module runs validations
    ↓
-12. Self-Improvement logs metrics to issue comment
+12. PR Manager creates PR linked to issue
+   ↓
+13. Update issue with PR link and progress
+   ↓
+14. Self-Improvement logs metrics to issue comment
 ```
 
 ### 3.1.5 Issue-Based Task Generation Flow
@@ -402,6 +415,40 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 10. Next run: Full history available in same issue
 ```
 
+### 3.5 Pipeline Monitoring and Issue Creation Flow
+
+```
+1. Scheduled trigger or workflow failure webhook
+   ↓
+2. Context Analyzer queries GitHub Actions API
+   ↓
+3. Get failed workflow runs in last 24 hours
+   ↓
+4. For each failed run:
+   ↓
+5. Check if investigation issue already exists
+   ↓
+6. If not: Download workflow logs
+   ↓
+7. Gemini-CLI analyzes failure patterns
+   ↓
+8. Extract error messages and stack traces
+   ↓
+9. Identify likely root cause
+   ↓
+10. Issue Manager creates investigation issue
+   ↓
+11. Add labels: type-bugfix, priority-high, status-ready
+   ↓
+12. Link to failed workflow run
+   ↓
+13. Include analysis and suggested fixes
+   ↓
+14. Assign to ai-dev-bot or relevant team
+   ↓
+15. Bot can then work on fix in next cycle
+```
+
 ---
 
 ## 4. Technical Stack
@@ -466,6 +513,15 @@ codeGen:
 issues:
   enableTaskGeneration: true
   enableMemory: true
+  enablePipelineMonitoring: true  # Monitor GitHub Actions for failures
+  pipelineMonitoring:
+    checkInterval: '0 */6 * * *'  # Every 6 hours
+    lookbackHours: 24
+    excludeWorkflows:
+      - 'dependabot'
+      - 'codeql'
+    autoCreateIssues: true
+    issuePriority: 'high'
   labelPrefix: 'ai-bot'
   labels:
     priority:
@@ -483,6 +539,7 @@ issues:
       - 'type-bugfix'
       - 'type-refactor'
       - 'type-docs'
+      - 'type-investigate'  # For pipeline failures
   autoClose: true
   closeOnMerge: true
   retentionDays: 90  # Close stale issues
@@ -1096,6 +1153,8 @@ Mandatory human review for:
 - [ ] PR review capabilities
 - [ ] Automatic issue status updates
 - [ ] Issue comment-based memory system
+- [ ] Pipeline monitoring and failure detection
+- [ ] Automatic investigation issue creation
 - [ ] Basic self-configuration
 
 **Deliverables:**
@@ -1103,6 +1162,7 @@ Mandatory human review for:
 - Automated testing
 - PR review automation
 - Persistent bot memory via issues
+- Proactive pipeline failure tracking
 
 ### Phase 3: Advanced Features (Weeks 6-8)
 **Goal:** Autonomous operations
@@ -1430,6 +1490,87 @@ jobs:
           node scripts/issue-manager.js update-milestone
 ```
 
+### 10.5 Pipeline Monitoring Workflow
+
+File: `.github/workflows/monitor-pipelines.yml`
+
+```yaml
+name: Monitor GitHub Actions Pipelines
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['*']
+    types: [completed]
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'failure' || github.event_name != 'workflow_run'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          
+      - name: Scan for Failed Workflows
+        id: scan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            # Specific workflow failure
+            echo "workflow_run_id=${{ github.event.workflow_run.id }}" >> $GITHUB_OUTPUT
+            echo "has_failures=true" >> $GITHUB_OUTPUT
+          else
+            # Scheduled scan
+            node scripts/context-analyzer.js scan-pipelines \
+              --lookback-hours 24
+          fi
+          
+      - name: Analyze Failures
+        if: steps.scan.outputs.has_failures == 'true'
+        id: analyze
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ steps.scan.outputs.workflow_run_id }}" ]; then
+            # Analyze specific failure
+            node scripts/context-analyzer.js analyze-workflow-failure \
+              --run-id "${{ steps.scan.outputs.workflow_run_id }}"
+          else
+            # Analyze discovered failures
+            node scripts/context-analyzer.js analyze-workflow-failures \
+              --failures "${{ steps.scan.outputs.failures_file }}"
+          fi
+          
+      - name: Create Investigation Issues
+        if: steps.scan.outputs.has_failures == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/issue-manager.js create-investigation-issues \
+            --analysis "${{ steps.analyze.outputs.analysis_file }}" \
+            --auto-assign ai-dev-bot
+            
+      - name: Link to Failed Workflow
+        if: github.event_name == 'workflow_run'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ steps.create.outputs.issue_number }}" ]; then
+            gh issue comment "${{ steps.create.outputs.issue_number }}" \
+              --body "🔗 Failed workflow run: ${{ github.event.workflow_run.html_url }}"
+          fi
+```
+
 ---
 
 ## 11. Prompt Engineering
@@ -1541,7 +1682,66 @@ Output format: JSON
 }
 ```
 
-### 11.3 Self-Improvement Prompt Template
+### 11.3 Pipeline Failure Analysis Prompt Template
+
+```
+You are an expert DevOps engineer analyzing CI/CD pipeline failures.
+
+Workflow Context:
+- Repository: {REPO_NAME}
+- Workflow: {WORKFLOW_NAME}
+- Run ID: {RUN_ID}
+- Branch: {BRANCH}
+- Commit: {COMMIT_SHA}
+- Author: {COMMIT_AUTHOR}
+- Timestamp: {FAILURE_TIME}
+
+Workflow Logs:
+{WORKFLOW_LOGS}
+
+Error Messages:
+{ERROR_MESSAGES}
+
+Recent Changes:
+{RECENT_COMMITS}
+
+Previous Successful Run:
+{LAST_SUCCESS_INFO}
+
+Task:
+Analyze the workflow failure and provide:
+1. Root cause analysis
+2. Likely culprit (code change, dependency, infrastructure)
+3. Suggested fix
+4. Steps to reproduce
+5. Prevention strategies
+
+Consider:
+- Is this a new failure or recurring issue?
+- Is it related to recent code changes?
+- Is it an environmental/infrastructure issue?
+- Are dependencies up to date?
+- Are there test failures or build errors?
+
+Output format: JSON
+{
+  "rootCause": "...",
+  "failureType": "test|build|deploy|infrastructure",
+  "likelyCulprit": "...",
+  "confidence": "high|medium|low",
+  "suggestedFix": {
+    "description": "...",
+    "files": [...],
+    "approach": "..."
+  },
+  "stepsToReproduce": [...],
+  "preventionStrategy": "...",
+  "priority": "critical|high|medium|low",
+  "estimatedEffort": "S|M|L"
+}
+```
+
+### 11.4 Self-Improvement Prompt Template
 
 ```
 You are analyzing the performance of an AI development bot.
@@ -1967,6 +2167,58 @@ Section {X.Y}: {SECTION_NAME}
 🤖 This issue was auto-generated by AI-Dev-Bot from ROADMAP.md
 ```
 
+#### Pipeline Investigation Issue Template
+
+```markdown
+## 🔥 Pipeline Failure Investigation
+
+**Workflow:** {WORKFLOW_NAME}
+**Run:** [#{RUN_ID}]({RUN_URL})
+**Branch:** {BRANCH}
+**Failed At:** {TIMESTAMP}
+**Duration:** {DURATION}
+
+### Failure Summary
+{GEMINI_ANALYSIS_SUMMARY}
+
+### Root Cause Analysis
+{ROOT_CAUSE}
+
+**Confidence:** {CONFIDENCE}
+**Failure Type:** {TYPE}
+**Priority:** {PRIORITY}
+
+### Error Messages
+```
+{ERROR_MESSAGES}
+```
+
+### Recent Changes
+- Commit: {COMMIT_SHA} by {AUTHOR}
+- Message: {COMMIT_MESSAGE}
+- Files changed: {FILE_COUNT}
+
+### Suggested Fix
+{SUGGESTED_FIX_DESCRIPTION}
+
+**Estimated Effort:** {EFFORT} story points
+
+### Steps to Reproduce
+1. {STEP_1}
+2. {STEP_2}
+3. ...
+
+### Prevention Strategy
+{PREVENTION_STRATEGY}
+
+### Related Workflows
+- Last successful run: [#{LAST_SUCCESS_ID}]({LAST_SUCCESS_URL})
+- Previous failures: {COUNT} in last 7 days
+
+---
+🤖 This investigation issue was auto-generated by AI-Dev-Bot from pipeline monitoring
+```
+
 #### Bot Memory Comment Template
 
 ```markdown
@@ -2068,6 +2320,8 @@ See Section 5 for full configuration examples.
 - `type-docs` - Documentation update
 - `type-test` - Test improvements
 - `type-config` - Configuration change
+- `type-investigate` - Pipeline failure investigation
+- `type-ci-cd` - CI/CD pipeline related
 
 **Sprint Labels:**
 - `sprint-1`, `sprint-2`, etc. - Sprint assignment
@@ -2076,6 +2330,8 @@ See Section 5 for full configuration examples.
 - `ai-generated` - Created by AI-Dev-Bot
 - `ai-bot-task` - Task for the bot
 - `bot-memory` - Issue used for memory storage
+- `pipeline-failure` - Auto-created from workflow failure
+- `automated-investigation` - Automated issue creation
 
 ### Appendix F: API Reference
 
@@ -2122,6 +2378,17 @@ interface IssueManager {
   parseRoadmap(roadmapPath: string): RoadmapTask[];
   linkPR(issueNumber: number, prNumber: number): void;
   getExecutionHistory(issueNumber: number): ExecutionRecord[];
+  createInvestigationIssue(failure: WorkflowFailure, analysis: FailureAnalysis): Issue;
+  checkDuplicateInvestigation(workflowName: string, errorSignature: string): Issue | null;
+}
+
+// Context Analyzer (Extended)
+interface ContextAnalyzer {
+  // ... existing methods ...
+  scanPipelines(lookbackHours: number): WorkflowFailure[];
+  analyzeWorkflowFailure(runId: string): FailureAnalysis;
+  getWorkflowLogs(runId: string): string;
+  extractErrorMessages(logs: string): string[];
 }
 
 interface IssueContext {
