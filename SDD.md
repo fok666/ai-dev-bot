@@ -547,7 +547,7 @@ Stored in the bot's own repository:
 ```yaml
 # bot-config.yml
 gemini:
-  model: 'gemini-2.0-flash-exp'
+  model: 'gemini-3-flash-preview'
   temperature: 0.3
   maxTokens: 8096
   
@@ -2033,7 +2033,7 @@ Closes #{ISSUE_NUMBER}
 - [x] Issue context reviewed
 
 ## AI Generation Notes
-- Model: Gemini 2.0 Flash
+- Model: gemini-3-flash-preview
 - Issue: #{ISSUE_NUMBER}
 - Context: {SUMMARY_OF_LOADED_CONTEXT}
 - Confidence: High
