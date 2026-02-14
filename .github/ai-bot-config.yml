@@ -5,6 +5,36 @@ bot:
   enabled: true
   mode: 'autonomous'  # autonomous | supervised
   schedule: '0 2 * * *'  # Cron schedule
+
+# Repositories to monitor
+repositories:
+  - name: 'fok666/selfhosted-devops'
+    priority: 'high'
+    enabled: true
+  - name: 'fok666/github-selfhosted-runner'
+    priority: 'high'
+    enabled: true
+  - name: 'fok666/gitlab-selfhosted-runner'
+    priority: 'high'
+    enabled: true
+  - name: 'fok666/azure-devops-agent'
+    priority: 'high'
+    enabled: true
+  - name: 'fok666/lambda-python-layer'
+    priority: 'medium'
+    enabled: true
+  - name: 'fok666/openhqm'
+    priority: 'high'
+    enabled: true
+  - name: 'fok666/openhqm-rm'
+    priority: 'medium'
+    enabled: true
+  - name: 'fok666/openhqm-dashboard'
+    priority: 'medium'
+    enabled: true
+  - name: 'fok666/aws-lambda-astrolog'
+    priority: 'medium'
+    enabled: true
   
 # Document locations
 documents:
@@ -29,6 +59,15 @@ codeGen:
 issues:
   enableTaskGeneration: true
   enableMemory: true
+  enablePipelineMonitoring: true  # Monitor GitHub Actions for failures
+  pipelineMonitoring:
+    checkInterval: '0 */6 * * *'  # Every 6 hours
+    lookbackHours: 24
+    excludeWorkflows:
+      - 'dependabot'
+      - 'codeql'
+    autoCreateIssues: true
+    issuePriority: 'high'
   labelPrefix: 'ai-bot'
   labels:
     priority:
@@ -46,6 +85,8 @@ issues:
       - 'type-bugfix'
       - 'type-refactor'
       - 'type-docs'
+      - 'type-investigate'  # For pipeline failures
+      - 'type-ci-cd'  # CI/CD pipeline related
   autoClose: true
   closeOnMerge: true
   retentionDays: 90

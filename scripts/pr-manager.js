@@ -149,8 +149,9 @@ Keep response concise (under 200 words).`;
       if (reviewText.includes('REQUEST_CHANGES')) action = 'REQUEST_CHANGES';
 
       console.log(`\n✅ Review decision: ${action}`);
+      console.log(`::set-output name=should_review::true`);
       console.log(`::set-output name=review_body::${reviewText.replace(/\n/g, ' ')}`);
-      console.log(`::set-output name=review_action::${action === 'APPROVE' ? '--approve' : '--comment'}`);
+      console.log(`::set-output name=review_action::${action}`);
 
       return { action, body: reviewText };
     } catch (error) {

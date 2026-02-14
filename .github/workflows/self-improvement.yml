@@ -1,0 +1,80 @@
+name: Bot Self-Improvement
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday at midnight
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - collect-metrics
+          - analyze
+          - propose
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  self-improvement:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Determine Action
+        id: action
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "action=${{ github.event.inputs.action }}" >> $GITHUB_OUTPUT
+          else
+            echo "action=propose" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Collect Metrics
+        if: steps.action.outputs.action == 'collect-metrics' || steps.action.outputs.action == 'propose'
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/self-improvement.js collect-metrics
+          
+      - name: Analyze Performance
+        if: steps.action.outputs.action == 'analyze' || steps.action.outputs.action == 'propose'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.action.outputs.action }}" == "propose" ]; then
+            node scripts/self-improvement.js propose
+          else
+            node scripts/self-improvement.js analyze
+          fi
+          
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Self-Improvement Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** ${{ steps.action.outputs.action }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.action.outputs.action }}" == "propose" ]; then
+            echo "✅ Improvement proposal created (check Issues)" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,53 +1,24 @@
 # AI Development Bot
 
-A Gemini-CLI based GitHub AI coding bot with issue-based memory and autonomous development capabilities.
-
-## Overview
-
-The AI Development Bot is an autonomous coding assistant that:
-- Automatically tracks tasks via GitHub Issues
-- Generates implementation plans using Gemini AI
-- Creates pull requests with detailed context
-- Maintains execution history in issue comments
-- Follows agile best practices and roadmaps
+Autonomous GitHub coding assistant powered by Google Gemini AI with multi-repository monitoring and issue-based memory.
 
 ## Features
 
-- 🤖 **Autonomous Operation**: Scheduled and event-driven execution
-- 📝 **Issue-Based Memory**: Persistent state across workflow runs
-- 🔄 **Full PR Lifecycle**: From creation to merge
-- 📊 **Progress Tracking**: Sprint management via GitHub Issues
-- 🧠 **Context-Aware**: Learns from previous attempts
-- 🔒 **Safe & Auditable**: All decisions visible in issue comments
+- **Autonomous Development**: Generates code, creates PRs, and tracks tasks automatically
+- **Pipeline Monitoring**: Monitors GitHub Actions across multiple repositories, creates investigation issues on failures
+- **PR Review**: Automated code review with SDD compliance checking
+- **Self-Improvement**: Analyzes performance metrics and proposes optimizations
+- **Issue-Based Memory**: Persistent execution history across workflow runs
+- **Multi-Language**: Supports JavaScript, Python, Go, Rust, and more
 
-## Setup
+## Quick Start
 
 ### Prerequisites
 
 - Node.js 20+
--GitHub repository with Actions enabled
-- Gemini API key
-- GitHub Personal Access Token
-
-### Configuration
-
-1. **Add Secrets** to your GitHub repository:
-   - `GEMINI_API_KEY`: Your Google Gemini API key
-   - `GH_API_TOKEN`: GitHub Personal Access Token with `repo` and `workflow` scopes
-
-2. **Configure Bot** in `.github/ai-bot-config.yml`:
-   ```yaml
-   bot:
-     enabled: true
-     mode: 'autonomous'
-   ```
-
-3. **Create ROADMAP.md** with your project tasks:
-   ```markdown
-   ## Sprint 1
-   - [ ] Task name (5 points)
-   - [ ] Another task (8 points)
-   ```
+- GitHub repository with Actions enabled
+- [Gemini API key](https://aistudio.google.com/app/apikey)
+- GitHub Personal Access Token with `repo` and `workflow` scopes
 
 ### Installation
 
@@ -55,159 +26,130 @@ The AI Development Bot is an autonomous coding assistant that:
 npm install
 ```
 
+### Configuration
+
+1. Add GitHub secrets:
+   - `GEMINI_API_KEY` - Google Gemini API key
+   - `GH_API_TOKEN` - GitHub token with repo access
+
+2. Configure repositories in `.github/ai-bot-config.yml`:
+   ```yaml
+   repositories:
+     - name: owner/repo
+       priority: high
+       enabled: true
+   ```
+
+3. Create labels in target repositories:
+   ```bash
+   ./scripts/create-labels-all-repos.sh
+   ```
+
+### Verification
+
+```bash
+export GH_API_TOKEN=your_token
+./scripts/verify-multi-repo-setup.sh
+```
+
 ## Usage
 
-### Generate Tasks from Roadmap
+### Task-Based Development
 
-Manually trigger the task generation workflow:
+Create tasks in `ROADMAP.md`:
+```markdown
+## Sprint 1
+- [ ] Implement user authentication (8 points)
+- [ ] Add database migrations (5 points)
+```
+
+Generate issues from roadmap:
 ```bash
 gh workflow run generate-tasks.yml
 ```
 
-Or push changes to `ROADMAP.md` to trigger automatically.
-
-### Run the Bot
-
-The bot runs automatically:
-- **Scheduled**: Daily at 2 AM (configurable in workflow)
-- **On Issue Events**: When issues are labeled with `ai-bot-task`
-- **Manual**: Via workflow dispatch
-
-Manual execution:
+Run bot to process tasks:
 ```bash
 gh workflow run ai-dev-bot.yml
 ```
 
-### Monitor Progress
+### Pipeline Monitoring
 
-- Check GitHub Issues for task status
-- Review issue comments for execution history
-- Track PRs created by the bot
+Automatically runs every 6 hours. Manual trigger:
+```bash
+gh workflow run monitor-pipelines.yml
+```
+
+View investigation issues:
+```bash
+gh issue list --label pipeline-failure
+```
+
+### PR Review
+
+Bot reviews human-created PRs automatically:
+```bash
+# Triggered on PR open/update
+# Or manually:
+gh workflow run pr-review.yml -f pr_number=123
+```
+
+### Self-Improvement
+
+Analyze bot performance:
+```bash
+gh workflow run self-improvement.yml
+```
 
 ## Architecture
 
-### Core Components
-
-- **Orchestrator**: Main execution engine
-- **Issue Manager**: Task tracking and memory
-- **Context Analyzer**: Repository analysis
-- **PR Manager**: Pull request operations
-- **Gemini Integration**: AI-powered code generation
-
 ### Workflows
 
-- `ai-dev-bot.yml`: Main bot execution
-- `generate-tasks.yml`: Task generation from roadmap
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ai-dev-bot.yml` | Schedule, manual | Main task execution |
+| `generate-tasks.yml` | ROADMAP.md changes, manual | Create issues from roadmap |
+| `monitor-pipelines.yml` | Schedule (6h), workflow failure | Monitor pipeline failures |
+| `pr-review.yml` | PR open/update | Automated PR review |
+| `auto-merge.yml` | PR labeled auto-merge | Automatic PR merging |
+| `self-improvement.yml` | Weekly, manual | Performance analysis |
 
-## Issue Labels
+### Scripts
 
-The bot uses these labels for task management:
+- `orchestrator.js` - Main execution engine
+- `issue-manager.js` - Task tracking and memory
+- `context-analyzer.js` - Repository and workflow analysis
+- `pr-manager.js` - Pull request operations
+- `code-generator.js` - AI-powered code generation
+- `testing.js` - Multi-framework test execution
+- `self-improvement.js` - Performance metrics
 
-**Priority:**
-- `priority-high`, `priority-medium`, `priority-low`
+## Labels
 
-**Status:**
-- `status-ready`: Ready for bot to pick up
-- `status-in-progress`: Currently being worked on
-- `status-review`: PR created, awaiting review
-- `status-done`: Completed and merged
-- `status-blocked`: Blocked by external factor
+The bot uses GitHub labels for task management:
 
-**Type:**
-- `type-feature`, `type-bugfix`, `type-refactor`, `type-docs`
+**Priority**: `priority-high`, `priority-medium`, `priority-low`  
+**Status**: `status-ready`, `status-in-progress`, `status-review`, `status-done`, `status-blocked`  
+**Type**: `type-feature`, `type-bugfix`, `type-refactor`, `type-docs`, `type-investigate`, `type-ci-cd`  
+**Special**: `ai-bot-task`, `ai-generated`, `pipeline-failure`, `automated`, `bot-improvement`
 
-**Special:**
-- `ai-bot-task`: Marks issues for bot processing
-- `ai-generated`: Created by the bot
+## Multi-Repository Setup
 
-## How It Works
+The bot supports monitoring multiple repositories from a central location:
 
-1. **Task Creation**: Bot parses `ROADMAP.md` and creates GitHub Issues
-2. **Task Selection**: Selects highest priority `status-ready` task
-3. **Context Loading**: Loads issue description and execution history
-4. **Plan Generation**: Uses Gemini to create implementation plan
-5. **Execution Record**: Posts plan to issue comments
-6. **Code Generation**: Generates actual working code using Gemini AI
-7. **Branch & Commit**: Creates branch with generated code changes
-8. **Testing**: Auto-detects and runs tests (Jest, Pytest, Go, Rust, etc.)
-9. **PR Creation**: Opens pull request with working code linked to issue
-10. **Status Update**: Updates issue labels and links PR
+1. Configure repositories in `.github/ai-bot-config.yml`
+2. Verify access: `./scripts/verify-multi-repo-setup.sh`
+3. Create labels: `./scripts/create-labels-all-repos.sh`
+4. Issues are created in source repositories where failures occur
 
-## Development
-
-### Project Structure
-
-```
-ai-dev-bot/
-├── .github/
-│   ├── workflows/
-│   │   ├── ai-dev-bot.yml
-│   │   └── generate-tasks.yml
-│   └── ai-bot-config.yml
-├── scripts/
-│   ├── load-config.js
-│   ├── orchestrator.js
-│   ├── issue-manager.js
-│   ├── context-analyzer.js
-│   ├── pr-manager.js
-│   └── testing.js
-├── ROADMAP.md
-├── SDD.md
-└── package.json
-```
-
-### Running Locally
-
-```bash
-# Load configuration
-node scripts/load-config.js
-
-# Find next task
-export GH_API_TOKEN=your_token
-node scripts/issue-manager.js find-next-task
-
-# Parse roadmap
-node scripts/issue-manager.js parse-roadmap --file=ROADMAP.md
-```
-
-## Implementation Status
-
-Current implementation includes:
-- ✅ Issue-based task tracking with memory
-- ✅ Gemini AI integration for planning
-- ✅ Actual code generation (multi-language support)
-- ✅ Multi-framework testing module (Jest, Pytest, Go, Rust, etc.)
-- ✅ Automated PR creation and management
-- ✅ Execution history stored in issues
-- ✅ Comprehensive error handling
-- ⚠️ Manual PR review recommended (no auto-merge)
-- ⚠️ Limited to 10 files per code generation
-
-## Security
-
-- Secrets stored in GitHub Secrets
-- Limited API scopes
-- All operations auditable via issue comments
-- Protected paths prevent workflow modification
-
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for planned features and enhancements.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed setup instructions.
 
 ## Documentation
 
-- [Software Design Document (SDD)](SDD.md): Complete architecture and design
-- [Configuration Reference](.github/ai-bot-config.yml): Bot configuration options
-
-## Contributing
-
-This is an AI-assisted project. The bot can propose improvements to itself via PRs.
+- [Software Design Document](SDD.md) - Architecture and design
+- [Deployment Guide](DEPLOYMENT.md) - Setup and configuration
+- [Project Roadmap](ROADMAP.md) - Planned features
 
 ## License
 
 MIT
-
----
-
-🤖 **Status**: POC Implementation
-📅 **Last Updated**: February 14, 2026

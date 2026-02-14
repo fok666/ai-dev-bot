@@ -20,5 +20,7 @@
     "@octokit/rest": "^20.0.2",
     "js-yaml": "^4.1.0",
     "marked": "^12.0.0"
-  }
+  },
+  "devDependencies": {}
+}
 }

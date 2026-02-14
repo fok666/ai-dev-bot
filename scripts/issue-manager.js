@@ -317,6 +317,175 @@ Auto-generated task from ROADMAP.md
       throw error;
     }
   }
+
+  /**
+   * Create investigation issues from workflow failure analyses
+   */
+  async createInvestigationIssues(analysesFile) {
+    try {
+      console.log('📝 Creating investigation issues from analyses...');
+
+      const analyses = JSON.parse(fs.readFileSync(analysesFile, 'utf8'));
+      let issuesCreated = 0;
+
+      for (const analysis of analyses) {
+        // Extract repository info from analysis
+        const targetOwner = analysis.run._repo_owner || this.owner;
+        const targetRepo = analysis.run._repo_name || this.repo;
+        
+        console.log(`\n🔍 Processing failure in ${targetOwner}/${targetRepo}...`);
+        
+        // Check if investigation issue already exists for this workflow/error
+        const existingIssue = await this.findExistingInvestigationIssue(
+          analysis.run.name,
+          analysis.errors[0] || 'unknown',
+          targetOwner,
+          targetRepo
+        );
+
+        if (existingIssue) {
+          console.log(`   ℹ️  Investigation already exists: ${targetOwner}/${targetRepo}#${existingIssue.number}`);
+          
+          // Add comment with new occurrence
+          await this.octokit.issues.createComment({
+            owner: targetOwner,
+            repo: targetRepo,
+            issue_number: existingIssue.number,
+            body: `🔄 **Failure occurred again**
+
+**Run:** [#${analysis.run.id}](${analysis.run.html_url})
+**Time:** ${analysis.run.created_at}
+**Branch:** ${analysis.run.head_branch}
+**SHA:** ${analysis.run.head_sha}`
+          });
+          continue;
+        }
+
+        // Create new investigation issue in target repository
+        const title = `🔥 Pipeline Failure: ${analysis.run.name}`;
+        const body = this.formatInvestigationIssue(analysis);
+        
+        const priority = this.determinePriority(analysis);
+        const labels = [
+          'type-investigate',
+          'type-ci-cd',
+          'ai-bot-task',
+          'pipeline-failure',
+          'status-ready',
+          `priority-${priority}`
+        ];
+
+        const { data: issue } = await this.octokit.issues.create({
+          owner: targetOwner,
+          repo: targetRepo,
+          title,
+          body,
+          labels
+        });
+
+        console.log(`   ✅ Created investigation issue: ${targetOwner}/${targetRepo}#${issue.number}`);
+        console.log(`   🔗 ${issue.html_url}`);
+        issuesCreated++;
+      }
+
+      console.log(`\n✅ Created ${issuesCreated} investigation issue(s)`);
+      console.log(`::set-output name=issues_created::${issuesCreated}`);
+
+      return issuesCreated;
+    } catch (error) {
+      console.error('Error creating investigation issues:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Find existing investigation issue for the same failure
+   */
+  async findExistingInvestigationIssue(workflowName, errorSignature, targetOwner, targetRepo) {
+    try {
+      const { data: issues } = await this.octokit.issues.listForRepo({
+        owner: targetOwner,
+        repo: targetRepo,
+        state: 'open',
+        labels: 'pipeline-failure',
+        per_page: 50
+      });
+
+      // Find issue with matching workflow name and similar error
+      const matchingIssue = issues.find(issue => 
+        issue.title.includes(workflowName) &&
+        issue.body.includes(errorSignature.substring(0, 50))
+      );
+
+      return matchingIssue || null;
+    } catch (error) {
+      console.warn('Could not check for existing investigation issue:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Format investigation issue body
+   */
+  formatInvestigationIssue(analysis) {
+    const geminiAnalysis = analysis.analysis || {};
+    
+    return `## 🔥 Pipeline Failure Investigation
+
+**Workflow:** ${analysis.run.name}
+**Run:** [#${analysis.run.id}](${analysis.run.html_url})
+**Branch:** ${analysis.run.head_branch}
+**Failed At:** ${analysis.run.created_at}
+
+### Failure Summary
+
+**Status:** ${analysis.run.conclusion}
+**Failed Jobs:** ${analysis.failedJobs.length}
+
+${analysis.failedJobs.map(job => `- **${job.name}** (${job.started_at} - ${job.completed_at})`).join('\n')}
+
+### ${geminiAnalysis.rootCause ? 'Root Cause Analysis' : 'Error Messages'}
+
+${geminiAnalysis.rootCause || analysis.errors.map((e, i) => `${i + 1}. ${e}`).join('\n') || 'No specific errors captured'}
+
+${geminiAnalysis.rootCause ? `
+**Confidence:** ${geminiAnalysis.confidence || 'unknown'}
+**Likely Culprit:** ${geminiAnalysis.culprit || 'unknown'}
+` : ''}
+
+### Recent Changes
+
+${analysis.recentCommits.map(c => `- \`${c.sha}\` ${c.message} (${c.author})`).join('\n')}
+
+### ${geminiAnalysis.suggestedFix ? 'Suggested Fix' : 'Investigation Needed'}
+
+${geminiAnalysis.suggestedFix || 'Manual investigation required to determine root cause and appropriate fix.'}
+
+### Next Steps
+
+- [ ] Review workflow logs: [Run #${analysis.run.id}](${analysis.run.html_url})
+- [ ] Analyze recent code changes
+- [ ] Reproduce failure locally if possible
+- [ ] Implement fix
+- [ ] Verify fix resolves the issue
+
+---
+🤖 This investigation issue was auto-generated by AI-Dev-Bot from pipeline monitoring`;
+  }
+
+  /**
+   * Determine priority based on analysis
+   */
+  determinePriority(analysis) {
+    const geminiPriority = analysis.analysis?.priority;
+    
+    if (geminiPriority === 'critical') return 'high';
+    if (geminiPriority === 'high') return 'high';
+    if (geminiPriority === 'low') return 'low';
+    
+    // Default to high for pipeline failures
+    return 'high';
+  }
 }
 
 // CLI interface
@@ -360,9 +529,18 @@ async function main() {
         await manager.createTasks(tasksFile);
         break;
 
+      case 'create-investigation-issues':
+        const analysesFile = process.argv.find(arg => arg.startsWith('--analyses='))?.split('=')[1];
+        if (!analysesFile) {
+          console.error('Error: --analyses=<file> required');
+          process.exit(1);
+        }
+        await manager.createInvestigationIssues(analysesFile);
+        break;
+
       default:
         console.error('Unknown command:', command);
-        console.error('Available commands: find-next-task, load-context, log-execution, parse-roadmap, create-tasks');
+        console.error('Available commands: find-next-task, load-context, log-execution, parse-roadmap, create-tasks, create-investigation-issues');
         process.exit(1);
     }
   } catch (error) {

@@ -1,0 +1,73 @@
+name: AI PR Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: github.actor != 'ai-dev-bot' && !github.event.pull_request.draft
+    
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        run: npm install
+          
+      - name: Analyze Changes
+        id: analyze
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/context-analyzer.js analyze-pr \
+            --pr-number="${{ github.event.pull_request.number }}"
+            
+      - name: Review with Gemini
+        id: review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/pr-manager.js review \
+            --pr-number="${{ github.event.pull_request.number }}" \
+            --sdd-path="SDD.md"
+            
+      - name: Post Review
+        if: steps.review.outputs.should_review == 'true'
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          REVIEW_ACTION="${{ steps.review.outputs.review_action }}"
+          REVIEW_BODY="${{ steps.review.outputs.review_body }}"
+          
+          # Post review based on action
+          if [ "$REVIEW_ACTION" == "APPROVE" ]; then
+            gh pr review "${{ github.event.pull_request.number }}" \
+              --approve --body "$REVIEW_BODY"
+          elif [ "$REVIEW_ACTION" == "REQUEST_CHANGES" ]; then
+            gh pr review "${{ github.event.pull_request.number }}" \
+              --request-changes --body "$REVIEW_BODY"
+          else
+            gh pr review "${{ github.event.pull_request.number }}" \
+              --comment --body "$REVIEW_BODY"
+          fi
