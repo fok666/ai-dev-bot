@@ -61,10 +61,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "${{ steps.scan.outputs.workflow_run_id }}" ]; then
-            # Analyze specific workflow failure
-            node scripts/context-analyzer.js analyze-workflow-failure \
+            # Analyze specific workflow failure and wrap in array format
+            ANALYSIS_FILE=$(node scripts/context-analyzer.js analyze-workflow-failure \
               --run-id="${{ steps.scan.outputs.workflow_run_id }}" \
-              --workflow-name="${{ steps.scan.outputs.workflow_name }}"
+              --workflow-name="${{ steps.scan.outputs.workflow_name }}" | \
+              grep "analysis_file" | cut -d'=' -f2)
+            
+            # Wrap single analysis in array format for create-investigation-issues
+            ANALYSES_FILE=".context-cache/workflow-analyses.json"
+            echo "[$(cat $ANALYSIS_FILE)]" > $ANALYSES_FILE
+            echo "analyses_file=$ANALYSES_FILE" >> $GITHUB_OUTPUT
           else
             # Analyze all recent failures
             node scripts/context-analyzer.js analyze-workflow-failures \
@@ -72,7 +78,7 @@ jobs:
           fi
           
       - name: Create Investigation Issues
-        if: steps.scan.outputs.has_failures == 'true'
+        if: steps.scan.outputs.has_failures == 'true' && steps.analyze.outputs.analyses_file != ''
         env:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
@@ -81,13 +87,12 @@ jobs:
             --analyses="${{ steps.analyze.outputs.analyses_file }}"
           
       - name: Link to Failed Workflow (Single Failure)
-        if: github.event_name == 'workflow_run' && steps.analyze.outputs.issue_number != ''
+        if: github.event_name == 'workflow_run'
         env:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment "${{ steps.analyze.outputs.issue_number }}" \
-            --body "🔗 **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}"
+          echo "✅ Investigation issue created for workflow run ${{ github.event.workflow_run.id }}"
           
       - name: Summary
         if: always()
