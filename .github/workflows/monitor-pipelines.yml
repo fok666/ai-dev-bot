@@ -61,30 +61,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "${{ steps.scan.outputs.workflow_run_id }}" ]; then
-            # Analyze specific workflow failure and wrap in array format
-            ANALYSIS_FILE=$(node scripts/context-analyzer.js analyze-workflow-failure \
+            # Analyze specific workflow failure
+            node scripts/context-analyzer.js analyze-workflow-failure \
               --run-id="${{ steps.scan.outputs.workflow_run_id }}" \
-              --workflow-name="${{ steps.scan.outputs.workflow_name }}" | \
-              grep "analysis_file" | cut -d'=' -f2)
-            
-            # Wrap single analysis in array format for create-investigation-issues
-            ANALYSES_FILE=".context-cache/workflow-analyses.json"
-            echo "[$(cat $ANALYSIS_FILE)]" > $ANALYSES_FILE
-            echo "analyses_file=$ANALYSES_FILE" >> $GITHUB_OUTPUT
+              --workflow-name="${{ steps.scan.outputs.workflow_name }}"
           else
             # Analyze all recent failures
             node scripts/context-analyzer.js analyze-workflow-failures \
               --failures="${{ steps.scan.outputs.failures_file }}"
           fi
+      
+      - name: Wrap Analysis for Issue Creation
+        if: steps.scan.outputs.has_failures == 'true' && steps.analyze.outputs.analysis_file != ''
+        id: wrap
+        run: |
+          # Wrap single analysis in array format for create-investigation-issues
+          ANALYSES_FILE=".context-cache/workflow-analyses.json"
+          echo "[$(cat ${{ steps.analyze.outputs.analysis_file }})]" > $ANALYSES_FILE
+          echo "analyses_file=$ANALYSES_FILE" >> $GITHUB_OUTPUT
           
       - name: Create Investigation Issues
-        if: steps.scan.outputs.has_failures == 'true' && steps.analyze.outputs.analyses_file != ''
+        if: steps.scan.outputs.has_failures == 'true' && (steps.wrap.outputs.analyses_file != '' || steps.analyze.outputs.analyses_file != '')
         env:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
+          ANALYSES_FILE="${{ steps.wrap.outputs.analyses_file || steps.analyze.outputs.analyses_file }}"
           node scripts/issue-manager.js create-investigation-issues \
-            --analyses="${{ steps.analyze.outputs.analyses_file }}"
+            --analyses="$ANALYSES_FILE"
           
       - name: Link to Failed Workflow (Single Failure)
         if: github.event_name == 'workflow_run'
