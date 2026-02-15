@@ -35,11 +35,17 @@ create_labels_for_repo() {
   gh label create status-review --repo "$repo" --color 5319e7 --description "Awaiting review" --force 2>/dev/null || true
   gh label create status-done --repo "$repo" --color 0e8a16 --description "Completed" --force 2>/dev/null || true
   
+  # Complexity labels
+  gh label create complexity-S --repo "$repo" --color c5def5 --description "Small task (<2 hours)" --force 2>/dev/null || true
+  gh label create complexity-M --repo "$repo" --color 5ebeff --description "Medium task (2-8 hours)" --force 2>/dev/null || true
+  gh label create complexity-L --repo "$repo" --color 1f77b4 --description "Large task (8-24 hours, consider splitting)" --force 2>/dev/null || true
+  
   # Type labels
   gh label create type-feature --repo "$repo" --color a2eeef --description "New feature" --force 2>/dev/null || true
   gh label create type-bugfix --repo "$repo" --color d73a4a --description "Bug fix" --force 2>/dev/null || true
   gh label create type-refactor --repo "$repo" --color fef2c0 --description "Code refactoring" --force 2>/dev/null || true
   gh label create type-docs --repo "$repo" --color 1d76db --description "Documentation" --force 2>/dev/null || true
+  gh label create type-test --repo "$repo" --color bfdadc --description "Test improvements" --force 2>/dev/null || true
   gh label create type-investigate --repo "$repo" --color e99695 --description "Pipeline failure investigation" --force 2>/dev/null || true
   gh label create type-ci-cd --repo "$repo" --color 1d76db --description "CI/CD pipeline related" --force 2>/dev/null || true
   
@@ -49,6 +55,8 @@ create_labels_for_repo() {
   gh label create automated --repo "$repo" --color bfdadc --description "Automated change" --force 2>/dev/null || true
   gh label create pipeline-failure --repo "$repo" --color d73a4a --description "Auto-created from workflow failure" --force 2>/dev/null || true
   gh label create bot-improvement --repo "$repo" --color 7057ff --description "Bot self-improvement proposal" --force 2>/dev/null || true
+  gh label create bot-memory --repo "$repo" --color f9d0c4 --description "Issue used for memory storage" --force 2>/dev/null || true
+  gh label create automated-investigation --repo "$repo" --color ff6b6b --description "Automated issue creation" --force 2>/dev/null || true
   gh label create needs-review --repo "$repo" --color fbca04 --description "Needs human review" --force 2>/dev/null || true
   
   echo "   ✓ Labels created/updated in $repo"
