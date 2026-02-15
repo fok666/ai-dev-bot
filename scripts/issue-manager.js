@@ -338,11 +338,12 @@ Auto-generated task from ROADMAP.md
    * SAFETY: Process ONE failure at a time to prevent cascading issues
    */
   async createInvestigationIssues(analysesFile) {
+    let issuesCreated = 0; // Declare outside try block so it's accessible in catch
+    
     try {
       console.log('📝 Creating investigation issues from analyses...');
 
       const analyses = JSON.parse(fs.readFileSync(analysesFile, 'utf8'));
-      let issuesCreated = 0;
       const MAX_ISSUES_PER_RUN = 1; // CRITICAL: Only one issue per run to prevent rate limiting
 
       // Sort by priority to handle most important first
