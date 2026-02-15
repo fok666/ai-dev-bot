@@ -19,7 +19,9 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure')
+      (github.event_name == 'workflow_run' && 
+       github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.name != 'Monitor GitHub Actions Pipelines')
     
     steps:
       - name: Checkout code

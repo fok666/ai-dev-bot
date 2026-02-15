@@ -342,8 +342,23 @@ Auto-generated task from ROADMAP.md
 
       const analyses = JSON.parse(fs.readFileSync(analysesFile, 'utf8'));
       let issuesCreated = 0;
+      const MAX_ISSUES_PER_RUN = 5; // Limit to prevent rate limiting
+      const DELAY_BETWEEN_ISSUES = 2000; // 2 second delay
 
-      for (const analysis of analyses) {
+      // Sort by priority to handle most important first
+      const sortedAnalyses = analyses.sort((a, b) => {
+        const priorityA = this.determinePriority(a);
+        const priorityB = this.determinePriority(b);
+        const order = { high: 0, medium: 1, low: 2 };
+        return order[priorityA] - order[priorityB];
+      });
+
+      for (const analysis of sortedAnalyses) {
+        if (issuesCreated >= MAX_ISSUES_PER_RUN) {
+          console.log(`\n⚠️  Reached limit of ${MAX_ISSUES_PER_RUN} issues per run. Remaining failures will be processed next time.`);
+          break;
+        }
+
         // Extract repository info from analysis
         const targetOwner = analysis.run._repo_owner || this.owner;
         const targetRepo = analysis.run._repo_name || this.repo;
@@ -401,6 +416,12 @@ Auto-generated task from ROADMAP.md
         console.log(`   ✅ Created investigation issue: ${targetOwner}/${targetRepo}#${issue.number}`);
         console.log(`   🔗 ${issue.html_url}`);
         issuesCreated++;
+
+        // Rate limiting: delay between issue creations
+        if (issuesCreated < sortedAnalyses.length) {
+          console.log(`   ⏳ Waiting ${DELAY_BETWEEN_ISSUES/1000}s before next issue...`);
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_ISSUES));
+        }
       }
 
       console.log(`\n✅ Created ${issuesCreated} investigation issue(s)`);
@@ -413,6 +434,17 @@ Auto-generated task from ROADMAP.md
 
       return issuesCreated;
     } catch (error) {
+      // Check for rate limiting errors
+      if (error.status === 403 && error.message.includes('rate limit')) {
+        console.error('⚠️  GitHub rate limit exceeded. Stopping issue creation.');
+        console.error('   Issues created before limit:', issuesCreated);
+        return issuesCreated;
+      }
+      if (error.status === 403 && error.message.includes('secondary rate limit')) {
+        console.error('⚠️  GitHub secondary rate limit exceeded. Stopping issue creation.');
+        console.error('   Issues created before limit:', issuesCreated);
+        return issuesCreated;
+      }
       console.error('Error creating investigation issues:', error.message);
       throw error;
     }
@@ -428,10 +460,19 @@ Auto-generated task from ROADMAP.md
         repo: targetRepo,
         state: 'open',
         labels: 'pipeline-failure',
-        per_page: 50
+        per_page: 100
       });
 
-      // Find issue with matching workflow name and similar error
+      // Find issue with matching workflow name (exact title match preferred)
+      const exactMatch = issues.find(issue => 
+        issue.title === `🔥 Pipeline Failure: ${workflowName}`
+      );
+      
+      if (exactMatch) {
+        return exactMatch;
+      }
+
+      // Fallback: Find issue with matching workflow name and similar error
       const matchingIssue = issues.find(issue => 
         issue.title.includes(workflowName) &&
         issue.body.includes(errorSignature.substring(0, 50))
