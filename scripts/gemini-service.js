@@ -86,6 +86,25 @@ class GeminiService {
     this.batchQueue = [];
     this.batchTimer = null;
 
+    // Circuit breaker state
+    this.circuitBreaker = {
+      state: 'CLOSED', // CLOSED, OPEN, HALF_OPEN
+      failures: 0,
+      consecutiveFailures: 0,
+      successCount: 0,
+      lastFailureTime: null,
+      lastStateChange: Date.now(),
+      failureThreshold: config.circuitBreaker?.failureThreshold || 5,
+      consecutiveFailureThreshold: config.circuitBreaker?.consecutiveFailureThreshold || 3,
+      recoveryTimeout: config.circuitBreaker?.recoveryTimeout || 60000, // 1 minute
+      halfOpenSuccessThreshold: config.circuitBreaker?.halfOpenSuccessThreshold || 2,
+      monitoringWindow: config.circuitBreaker?.monitoringWindow || 300000, // 5 minutes
+    };
+
+    // Health check
+    this.lastHealthCheck = null;
+    this.healthCheckInterval = config.healthCheckInterval || 300000; // 5 minutes
+
     if (this.config.enableCaching) {
       fs.mkdirSync(this.config.cacheDir, { recursive: true });
     }
@@ -144,20 +163,256 @@ class GeminiService {
     return selectedModel;
   }
 
+  /**
+   * Circuit Breaker Pattern Implementation
+   * Prevents cascading failures by stopping requests when service is unhealthy
+   */
+  
+  /**
+   * Check circuit breaker state before making API call
+   * @throws {Error} If circuit is OPEN
+   */
+  checkCircuitBreaker() {
+    const now = Date.now();
+    
+    // If circuit is OPEN, check if recovery timeout has passed
+    if (this.circuitBreaker.state === 'OPEN') {
+      const timeSinceLastFailure = now - this.circuitBreaker.lastFailureTime;
+      
+      if (timeSinceLastFailure >= this.circuitBreaker.recoveryTimeout) {
+        console.log('🔄 Circuit breaker: Transitioning from OPEN to HALF_OPEN (testing recovery)');
+        this.circuitBreaker.state = 'HALF_OPEN';
+        this.circuitBreaker.successCount = 0;
+        this.circuitBreaker.lastStateChange = now;
+      } else {
+        const waitTime = Math.ceil((this.circuitBreaker.recoveryTimeout - timeSinceLastFailure) / 1000);
+        throw new Error(`⛔ Circuit breaker is OPEN. Service unavailable. Retry in ${waitTime}s. (Consecutive failures: ${this.circuitBreaker.consecutiveFailures})`);
+      }
+    }
+    
+    // In HALF_OPEN state, allow limited requests
+    if (this.circuitBreaker.state === 'HALF_OPEN') {
+      console.log(`🔍 Circuit breaker: HALF_OPEN - testing service health (success: ${this.circuitBreaker.successCount}/${this.circuitBreaker.halfOpenSuccessThreshold})`);
+    }
+  }
+  
+  /**
+   * Record successful API call
+   */
+  recordCircuitBreakerSuccess() {
+    const cb = this.circuitBreaker;
+    
+    if (cb.state === 'HALF_OPEN') {
+      cb.successCount++;
+      console.log(`✅ Circuit breaker: Success in HALF_OPEN (${cb.successCount}/${cb.halfOpenSuccessThreshold})`);
+      
+      if (cb.successCount >= cb.halfOpenSuccessThreshold) {
+        console.log('✅ Circuit breaker: Transitioning from HALF_OPEN to CLOSED (service recovered)');
+        cb.state = 'CLOSED';
+        cb.failures = 0;
+        cb.consecutiveFailures = 0;
+        cb.successCount = 0;
+        cb.lastStateChange = Date.now();
+      }
+    } else if (cb.state === 'CLOSED') {
+      // Reset consecutive failures on success
+      cb.consecutiveFailures = 0;
+    }
+  }
+  
+  /**
+   * Record failed API call and update circuit breaker state
+   */
+  recordCircuitBreakerFailure(error) {
+    const cb = this.circuitBreaker;
+    const now = Date.now();
+    
+    cb.failures++;
+    cb.consecutiveFailures++;
+    cb.lastFailureTime = now;
+    
+    console.warn(`⚠️  Circuit breaker: Failure recorded (consecutive: ${cb.consecutiveFailures}/${cb.consecutiveFailureThreshold}, total: ${cb.failures})`);
+    
+    // Check if we should open the circuit
+    const shouldOpen = cb.consecutiveFailures >= cb.consecutiveFailureThreshold;
+    
+    if (shouldOpen && cb.state !== 'OPEN') {
+      console.error(`🚨 Circuit breaker: OPENING circuit (${cb.consecutiveFailures} consecutive failures)`);
+      cb.state = 'OPEN';
+      cb.lastStateChange = now;
+      cb.successCount = 0;
+    } else if (cb.state === 'HALF_OPEN') {
+      // Any failure in HALF_OPEN should reopen the circuit
+      console.error('🚨 Circuit breaker: Failure in HALF_OPEN, reopening circuit');
+      cb.state = 'OPEN';
+      cb.lastStateChange = now;
+      cb.successCount = 0;
+    }
+  }
+  
+  /**
+   * Get circuit breaker status
+   */
+  getCircuitBreakerStatus() {
+    const cb = this.circuitBreaker;
+    return {
+      state: cb.state,
+      failures: cb.failures,
+      consecutiveFailures: cb.consecutiveFailures,
+      successCount: cb.successCount,
+      lastFailureTime: cb.lastFailureTime,
+      lastStateChange: cb.lastStateChange,
+      timeSinceLastFailure: cb.lastFailureTime ? Date.now() - cb.lastFailureTime : null,
+      timeInCurrentState: Date.now() - cb.lastStateChange,
+    };
+  }
+  
+  /**
+   * Reset circuit breaker (for testing or manual recovery)
+   */
+  resetCircuitBreaker() {
+    console.log('🔄 Circuit breaker: Manual reset');
+    this.circuitBreaker.state = 'CLOSED';
+    this.circuitBreaker.failures = 0;
+    this.circuitBreaker.consecutiveFailures = 0;
+    this.circuitBreaker.successCount = 0;
+    this.circuitBreaker.lastStateChange = Date.now();
+  }
+
+  /**
+   * Health Check Pattern Implementation
+   * Proactively tests service availability
+   */
+  
+  /**
+   * Perform health check on Gemini API
+   * @returns {Object} Health status
+   */
+  async performHealthCheck() {
+    const now = Date.now();
+    const healthCheckAge = this.lastHealthCheck ? now - this.lastHealthCheck.timestamp : Infinity;
+    
+    // Return cached health check if recent
+    if (this.lastHealthCheck && healthCheckAge < this.healthCheckInterval) {
+      console.log(`💚 Using cached health check (age: ${Math.round(healthCheckAge / 1000)}s)`);
+      return this.lastHealthCheck;
+    }
+    
+    console.log('🏥 Performing Gemini API health check...');
+    
+    const healthStatus = {
+      timestamp: now,
+      healthy: false,
+      latency: null,
+      error: null,
+      circuitBreakerState: this.circuitBreaker.state,
+    };
+    
+    try {
+      const startTime = Date.now();
+      
+      // Simple health check query
+      const testPrompt = 'Reply with: OK';
+      const result = await Promise.race([
+        this.model.generateContent(testPrompt),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Health check timeout')), 10000)
+        )
+      ]);
+      
+      const endTime = Date.now();
+      const response = result.response;
+      const text = response.text();
+      
+      healthStatus.latency = endTime - startTime;
+      healthStatus.healthy = true;
+      
+      console.log(`✅ Health check passed (latency: ${healthStatus.latency}ms)`);
+      
+      // If health check passes, consider resetting circuit breaker if it's been open for a while
+      if (this.circuitBreaker.state === 'OPEN') {
+        const timeInOpen = now - this.circuitBreaker.lastStateChange;
+        if (timeInOpen > this.circuitBreaker.recoveryTimeout * 2) {
+          console.log('🔄 Health check passed while circuit was OPEN - resetting circuit breaker');
+          this.resetCircuitBreaker();
+        }
+      }
+      
+    } catch (error) {
+      healthStatus.healthy = false;
+      healthStatus.error = error.message;
+      console.error(`❌ Health check failed: ${error.message}`);
+    }
+    
+    this.lastHealthCheck = healthStatus;
+    return healthStatus;
+  }
+  
+  /**
+   * Get service health status (includes circuit breaker state)
+   */
+  getHealthStatus() {
+    const cbStatus = this.getCircuitBreakerStatus();
+    const lastCheck = this.lastHealthCheck;
+    
+    return {
+      service: 'Gemini AI API',
+      timestamp: Date.now(),
+      circuitBreaker: cbStatus,
+      lastHealthCheck: lastCheck,
+      isOperational: cbStatus.state === 'CLOSED' && (!lastCheck || lastCheck.healthy),
+      callCount: this.callCount,
+      callHistory: {
+        lastHour: this.callHistory.length,
+        rateLimit: this.config.rateLimitPerHour,
+      },
+      costs: {
+        daily: this.costTracker.daily,
+        monthly: this.costTracker.monthly,
+      },
+    };
+  }
+
   async generate(prompt, options = {}) {
     // Select optimal model based on complexity
     const selectedModel = await this.selectModel(prompt, options.forceModel);
     
-    await this.checkRateLimit();
-    await this.checkSpendingLimits();
+    // Try to get cached response first (before any checks)
+    // This allows graceful degradation when service is unavailable
+    let cachedResponse = null;
+    if (this.config.enableCaching) {
+      cachedResponse = this.getCachedResponse(prompt, selectedModel);
+    }
+    
+    try {
+      // Check circuit breaker BEFORE any processing
+      this.checkCircuitBreaker();
+      
+      await this.checkRateLimit(options.rateLimitOptions);
+      await this.checkSpendingLimits();
 
-    // Check response cache first
-    if (this.config.enableCaching && !options.skipCache) {
-      const cached = this.getCachedResponse(prompt, selectedModel);
-      if (cached) {
+      // Use cached response if available (normal cache hit)
+      if (cachedResponse && !options.skipCache) {
         console.log('✅ Using cached Gemini response (FREE)');
-        return cached;
+        // Cached response counts as success
+        this.recordCircuitBreakerSuccess();
+        return cachedResponse;
       }
+      
+    } catch (error) {
+      // Graceful degradation: Use cached response if available when service is unavailable
+      if (cachedResponse && (error.code === 'RATE_LIMIT_EXCEEDED' || error.message.includes('Circuit breaker'))) {
+        console.warn(`⚠️  ${error.message}`);
+        console.log('💡 Graceful degradation: Using cached response as fallback');
+        return cachedResponse;
+      }
+      
+      // If no cached response available, provide helpful error message
+      if (error.code === 'RATE_LIMIT_EXCEEDED') {
+        error.message += ' (No cached response available for this query)';
+      }
+      
+      throw error;
     }
 
     if (options.checkTokens) {
@@ -187,6 +442,9 @@ class GeminiService {
         
         this.recordCall();
 
+        // Record successful API call for circuit breaker
+        this.recordCircuitBreakerSuccess();
+
         // Cache response
         if (this.config.enableCaching && !options.skipCache) {
           this.cacheResponse(prompt, text, selectedModel);
@@ -197,6 +455,11 @@ class GeminiService {
       } catch (error) {
         lastError = error;
         console.error(`❌ Attempt ${attempt} failed:`, error.message);
+
+        // Record failure for circuit breaker (only on last attempt to avoid premature circuit opening)
+        if (attempt === this.config.retryAttempts) {
+          this.recordCircuitBreakerFailure(error);
+        }
 
         if (attempt < this.config.retryAttempts && this.isRetryableError(error)) {
           const delay = this.config.retryDelay * Math.pow(2, attempt - 1);
@@ -235,19 +498,61 @@ class GeminiService {
     );
   }
 
-  async checkRateLimit() {
+  /**
+   * Check rate limit with graceful degradation
+   * @param {Object} options - Options for rate limit behavior
+   * @returns {Object} Rate limit status and action taken
+   */
+  async checkRateLimit(options = {}) {
     const oneHourAgo = Date.now() - (60 * 60 * 1000);
     this.callHistory = this.callHistory.filter(time => time > oneHourAgo);
 
+    const rateLimitStatus = {
+      callsInLastHour: this.callHistory.length,
+      limit: this.config.rateLimitPerHour,
+      remaining: this.config.rateLimitPerHour - this.callHistory.length,
+      utilizationPercent: (this.callHistory.length / this.config.rateLimitPerHour) * 100,
+    };
+
+    // Early warning at 80% utilization
+    if (rateLimitStatus.utilizationPercent >= 80 && rateLimitStatus.utilizationPercent < 100) {
+      console.warn(`⚠️  Rate limit warning: ${Math.round(rateLimitStatus.utilizationPercent)}% utilized (${rateLimitStatus.remaining} calls remaining)`);
+    }
+
+    // Rate limit reached
     if (this.callHistory.length >= this.config.rateLimitPerHour) {
       const oldestCall = Math.min(...this.callHistory);
       const waitTime = (oldestCall + (60 * 60 * 1000)) - Date.now();
       
       if (waitTime > 0) {
-        console.warn(`⚠️  Rate limit reached. Waiting ${Math.ceil(waitTime / 1000)}s...`);
+        // Option 1: Graceful degradation - throw error with suggestion to use cache
+        if (options.gracefulDegradation) {
+          const error = new Error(
+            `Rate limit exceeded (${rateLimitStatus.callsInLastHour}/${rateLimitStatus.limit}). ` +
+            `Try again in ${Math.ceil(waitTime / 1000)}s or use cached responses.`
+          );
+          error.code = 'RATE_LIMIT_EXCEEDED';
+          error.retryAfter = waitTime;
+          error.rateLimitStatus = rateLimitStatus;
+          throw error;
+        }
+        
+        // Option 2: Wait for rate limit to reset (default behavior)
+        console.warn(
+          `⏸️  Rate limit reached (${rateLimitStatus.callsInLastHour}/${rateLimitStatus.limit}). ` +
+          `Waiting ${Math.ceil(waitTime / 1000)}s for reset...`
+        );
+        
+        // If wait time is excessive, suggest alternative
+        if (waitTime > 300000) { // 5 minutes
+          console.warn(`💡 Long wait time. Consider using cached responses or retry later.`);
+        }
+        
         await this.sleep(waitTime);
       }
     }
+    
+    return rateLimitStatus;
   }
 
   recordCall() {
@@ -591,6 +896,152 @@ class GeminiService {
       }
       item.resolve(results);
     }
+  }
+  
+  /**
+   * Monitoring and Alerting for Circuit Breaker
+   */
+  
+  /**
+   * Check if circuit breaker state requires alerting
+   * @returns {Object} Alert information
+   */
+  checkCircuitBreakerAlerts() {
+    const cb = this.circuitBreaker;
+    const alerts = [];
+    
+    // Alert if circuit is OPEN
+    if (cb.state === 'OPEN') {
+      const timeOpen = Date.now() - cb.lastStateChange;
+      alerts.push({
+        severity: 'CRITICAL',
+        message: `Circuit breaker is OPEN (${Math.round(timeOpen / 1000)}s). Service unavailable after ${cb.consecutiveFailures} consecutive failures.`,
+        state: cb.state,
+        consecutiveFailures: cb.consecutiveFailures,
+        timeSinceStateChange: timeOpen,
+        action: 'Service degraded. Using cached responses if available. Will automatically retry recovery.',
+      });
+    }
+    
+    // Alert if circuit is HALF_OPEN (testing recovery)
+    if (cb.state === 'HALF_OPEN') {
+      const timeInHalfOpen = Date.now() - cb.lastStateChange;
+      alerts.push({
+        severity: 'WARNING',
+        message: `Circuit breaker is HALF_OPEN (${Math.round(timeInHalfOpen / 1000)}s). Testing service recovery.`,
+        state: cb.state,
+        successCount: cb.successCount,
+        requiredSuccesses: cb.halfOpenSuccessThreshold,
+        action: 'Limited requests allowed. Monitoring for recovery.',
+      });
+    }
+    
+    // Alert if approaching failure threshold while CLOSED
+    if (cb.state === 'CLOSED' && cb.consecutiveFailures >= cb.consecutiveFailureThreshold * 0.7) {
+      alerts.push({
+        severity: 'WARNING',
+        message: `Approaching circuit breaker threshold: ${cb.consecutiveFailures}/${cb.consecutiveFailureThreshold} consecutive failures.`,
+        state: cb.state,
+        consecutiveFailures: cb.consecutiveFailures,
+        threshold: cb.consecutiveFailureThreshold,
+        action: 'Service degrading. Monitor for potential circuit opening.',
+      });
+    }
+    
+    return {
+      hasAlerts: alerts.length > 0,
+      alerts,
+      timestamp: Date.now(),
+    };
+  }
+  
+  /**
+   * Export comprehensive metrics for monitoring
+   * @returns {Object} All metrics including circuit breaker, rate limits, costs, health
+   */
+  exportMetrics() {
+    const cbStatus = this.getCircuitBreakerStatus();
+    const rateLimitStatus = this.getRateLimitStatus();
+    const costStats = this.getCostStats();
+    const alerts = this.checkCircuitBreakerAlerts();
+    
+    return {
+      timestamp: new Date().toISOString(),
+      service: 'Gemini AI Service',
+      
+      // Circuit Breaker Metrics
+      circuitBreaker: {
+        state: cbStatus.state,
+        failures: cbStatus.failures,
+        consecutiveFailures: cbStatus.consecutiveFailures,
+        successCount: cbStatus.successCount,
+        thresholds: {
+          failureThreshold: this.circuitBreaker.failureThreshold,
+          consecutiveFailureThreshold: this.circuitBreaker.consecutiveFailureThreshold,
+          halfOpenSuccessThreshold: this.circuitBreaker.halfOpenSuccessThreshold,
+        },
+        timings: {
+          lastFailureTime: cbStatus.lastFailureTime,
+          timeSinceLastFailure: cbStatus.timeSinceLastFailure,
+          lastStateChange: cbStatus.lastStateChange,
+          timeInCurrentState: cbStatus.timeInCurrentState,
+        },
+      },
+      
+      // Rate Limiting Metrics
+      rateLimit: {
+        ...rateLimitStatus,
+        utilizationPercent: (rateLimitStatus.callsInLastHour / rateLimitStatus.limit) * 100,
+      },
+      
+      // Cost Metrics
+      costs: {
+        ...costStats,
+        dailyUtilization: (this.costTracker.daily.cost / this.config.costOptimization.dailySpendingLimit) * 100,
+        monthlyUtilization: (this.costTracker.monthly.cost / this.config.costOptimization.monthlySpendingLimit) * 100,
+      },
+      
+      // Health Status
+      health: {
+        lastHealthCheck: this.lastHealthCheck,
+        isOperational: cbStatus.state === 'CLOSED' && (!this.lastHealthCheck || this.lastHealthCheck.healthy),
+      },
+      
+      // Alerts
+      alerts: alerts,
+      
+      // General Stats
+      stats: {
+        totalCalls: this.callCount,
+        currentModel: this.currentModelName,
+      },
+    };
+  }
+  
+  /**
+   * Log metrics summary to console
+   */
+  logMetricsSummary() {
+    const metrics = this.exportMetrics();
+    
+    console.log('\n📊 === Gemini Service Metrics ===');
+    console.log(`🔄 Circuit Breaker: ${metrics.circuitBreaker.state}`);
+    console.log(`   Failures: ${metrics.circuitBreaker.consecutiveFailures}/${metrics.circuitBreaker.thresholds.consecutiveFailureThreshold} consecutive`);
+    console.log(`📈 Rate Limit: ${metrics.rateLimit.callsInLastHour}/${metrics.rateLimit.limit} calls (${Math.round(metrics.rateLimit.utilizationPercent)}%)`);
+    console.log(`💰 Costs: Daily $${metrics.costs.daily.cost.toFixed(2)}/${this.config.costOptimization.dailySpendingLimit} (${Math.round(metrics.costs.dailyUtilization)}%)`);
+    console.log(`💰 Costs: Monthly $${metrics.costs.monthly.cost.toFixed(2)}/${this.config.costOptimization.monthlySpendingLimit} (${Math.round(metrics.costs.monthlyUtilization)}%)`);
+    console.log(`🏥 Health: ${metrics.health.isOperational ? '✅ Operational' : '❌ Degraded'}`);
+    
+    if (metrics.alerts.hasAlerts) {
+      console.log(`\n🚨 ALERTS:`);
+      metrics.alerts.alerts.forEach(alert => {
+        const icon = alert.severity === 'CRITICAL' ? '🔴' : '⚠️';
+        console.log(`${icon} [${alert.severity}] ${alert.message}`);
+        console.log(`   Action: ${alert.action}`);
+      });
+    }
+    
+    console.log('=================================\n');
   }
   
   /**
