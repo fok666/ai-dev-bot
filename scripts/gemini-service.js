@@ -21,11 +21,11 @@ class GeminiService {
   constructor(config = {}) {
     this.config = {
       // Model configuration
-      defaultModel: config.defaultModel || 'gemini-1.5-flash',
+      defaultModel: config.defaultModel || 'gemini-2.5-flash',
       models: config.models || {
-        simple: 'gemini-1.5-flash-8b',
-        standard: 'gemini-1.5-flash',
-        complex: 'gemini-1.5-pro'
+        simple: 'gemini-2.5-flash',
+        standard: 'gemini-2.5-flash',
+        complex: 'gemini-2.5-pro'
       },
       autoSelectModel: config.autoSelectModel !== false,
       complexityThresholds: config.complexityThresholds || {
