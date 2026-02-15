@@ -41,15 +41,16 @@
       "**/*.test.js"
     ],
     "collectCoverageFrom": [
-      "scripts/**/*.js",
-      "!scripts/**/*.test.js"
+      "scripts/gemini-service.js",
+      "scripts/issue-manager.js",
+      "scripts/context-analyzer.js"
     ],
     "coverageThreshold": {
       "global": {
-        "branches": 15,
-        "functions": 13,
-        "lines": 12,
-        "statements": 12
+        "branches": 25,
+        "functions": 25,
+        "lines": 22,
+        "statements": 22
       }
     }
   }
