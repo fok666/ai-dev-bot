@@ -2,7 +2,8 @@ import fs from 'fs';
 import yaml from 'js-yaml';
 
 describe('Config Loading', () => {
-  const testConfigPath = '.test-config.yml';
+  // Use unique file name to prevent conflicts when tests run in parallel
+  const testConfigPath = `.test-config-load-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.yml`;
 
   afterEach(() => {
     if (fs.existsSync(testConfigPath)) {

@@ -3,8 +3,9 @@ import path from 'path';
 import yaml from 'js-yaml';
 
 describe('Orchestrator', () => {
-  const testConfigPath = '.test-config.yml';
-  const testSddPath = '.test-sdd.md';
+  // Use unique file names to prevent conflicts when tests run in parallel
+  const testConfigPath = `.test-config-orchestrator-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.yml`;
+  const testSddPath = `.test-sdd-orchestrator-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.md`;
 
   beforeEach(() => {
     // Clean up before each test to avoid state leakage
