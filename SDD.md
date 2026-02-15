@@ -185,6 +185,85 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 - Gemini CLI (official command-line interface)
 - API key management via GitHub Secrets
 - Response caching for efficiency
+- Circuit breaker pattern for resilience
+- Cost optimization engine
+
+**Advanced Features:**
+
+##### Circuit Breaker Pattern (Critical Safety Feature)
+Implements three-state circuit breaker to prevent cascading failures:
+
+**States:**
+- **CLOSED (Normal):** Requests flow through normally
+- **OPEN (Failing):** Blocks requests, uses cached responses
+- **HALF_OPEN (Testing):** Limited requests to test recovery
+
+**Thresholds:**
+- Opens after 3 consecutive failures OR 5 total failures in 60 seconds
+- Recovery timeout: 60 seconds
+- Health check cache: 5 minutes
+- Requires 2 successes in HALF_OPEN to close circuit
+
+**Behavior:**
+```javascript
+// ALWAYS check circuit before API calls
+await geminiService.checkCircuitBreaker(); // Throws if OPEN
+
+// Automatic state transitions
+// Graceful degradation uses cache when circuit OPEN
+if (circuitBreakerOpen && cachedResponse) {
+  return cachedResponse; // Fallback to cache
+}
+```
+
+**Benefits:**
+- Prevents API exhaustion during outages
+- Automatic recovery testing
+- Graceful degradation with cached responses
+- Reduces wasted API calls and costs
+- Fast fail prevents long timeouts
+
+##### Cost Optimization Strategies
+Comprehensive cost management system achieving 70%+ cost reduction:
+
+**1. Intelligent Model Selection**
+- **Simple tasks:** gemini-2.5-flash (cheapest)
+- **Complex analysis:** gemini-2.5-pro (when needed)
+- **Automatic selection** based on prompt complexity
+- **Savings:** 70% cost reduction vs always using pro model
+
+**2. Context Caching**
+- Cache responses for identical prompts
+- 5-minute cache TTL for frequently repeated queries
+- Cache directory: `.context-cache/gemini-responses`
+- **Savings:** 75% reduction on repeated context
+
+**3. Batch Processing**
+- Group similar requests where possible
+- Batch discount: 50% savings
+- Reduces API call overhead
+
+**4. Token Budget Management**
+- Rate limiting: 100 calls per hour (configurable)
+- Token usage tracking and reporting
+- Spending alerts and limits
+- Monthly budget enforcement
+
+**5. Response Caching Strategy**
+```javascript
+// Cache hits avoid API calls entirely
+const cacheKey = generateCacheKey(prompt, model);
+const cached = loadFromCache(cacheKey);
+if (cached && !options.skipCache) {
+  return cached; // Zero cost!
+}
+```
+
+**Cost Metrics:**
+- Average cost per generation tracked
+- Monthly spending dashboard
+- Cost per repository
+- ROI calculations (dev time saved vs API cost)
 
 #### 2.2.3 Context Analyzer
 **Responsibility:** Understand repository context and requirements
@@ -377,6 +456,34 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 8. Testing Module validates CI passes
    ↓
 9. PR Manager auto-merges if criteria met
+```
+
+### 3.2.5 Self-Healing PR Review Flow
+
+```
+1. Bot's PR receives review comments
+   ↓
+2. Webhook triggers self-healing workflow
+   ↓
+3. Load issue context + PR context
+   ↓
+4. Parse review comments for requested changes
+   ↓
+5. Gemini analyzes: "How to address these comments?"
+   ↓
+6. Generate code fixes
+   ↓
+7. Validate fixes locally (tests, linting)
+   ↓
+8. Push updates to same PR branch
+   ↓
+9. Add comment: "✅ Fixed: [summary of changes]"
+   ↓
+10. Update linked issue with resolution notes
+   ↓
+11. Request re-review from reviewers
+   ↓
+12. If approved → proceed to merge
 ```
 
 ### 3.3 Self-Configuration Flow
@@ -636,10 +743,48 @@ Stored in the bot's own repository:
 ```yaml
 # bot-config.yml
 gemini:
-  model: 'gemini-3-flash-preview'
+  model: 'gemini-2.5-flash'  # Default cheapest model
+  modelSelection: 'automatic'  # automatic | fixed
   temperature: 0.3
   maxTokens: 8096
   
+  # Cost Optimization
+  costOptimization:
+    enabled: true
+    intelligentModelSelection: true  # Auto-switch based on complexity
+    contextCaching: true
+    cacheDir: '.context-cache/gemini-responses'
+    cacheTTL: 300  # 5 minutes
+    batchProcessing: true
+    
+  # Budget Management
+  budget:
+    monthlyLimit: 100  # USD
+    alertThreshold: 0.8  # Alert at 80%
+    hardStop: true  # Stop when limit reached
+    trackingEnabled: true
+    
+  # Circuit Breaker Configuration
+  circuitBreaker:
+    enabled: true
+    failureThreshold: 5  # Total failures before opening
+    consecutiveFailureThreshold: 3  # Consecutive failures
+    recoveryTimeout: 60000  # 1 minute in ms
+    halfOpenSuccessThreshold: 2  # Successes to close
+    healthCheckInterval: 300000  # 5 minutes
+    
+  # Rate Limiting & Retry
+  rateLimitPerHour: 100
+  retryAttempts: 3
+  retryDelay: 1000  # Base delay in ms
+  exponentialBackoff: true
+  
+  # Graceful Degradation
+  gracefulDegradation:
+    enabled: true
+    useCacheOnFailure: true
+    useCacheOnRateLimit: true
+    
 repositories:
   - name: 'user/repo1'
     priority: 'high'
@@ -657,6 +802,24 @@ rateLimits:
 performance:
   maxConcurrentRepos: 3
   taskTimeout: 3600  # seconds
+  
+# Self-Healing Configuration
+selfHealing:
+  enabled: true
+  autoRecovery: true
+  prReviewResponseEnabled: true
+  pipelineFailureFixEnabled: true
+  staleIssueRecovery: true
+  staleThresholdHours: 24
+  escalateAfterRetries: 3
+  
+# Duplicate Prevention
+duplication:
+  checkBeforeCreate: true  # CRITICAL: Check first
+  deduplicationWindow: 7  # Days
+  errorSignatureMatching: true
+  maxIssuesPerRun: 1  # Pipeline monitoring
+  maxWIP: 3  # Work in progress limit
   
 learning:
   feedbackLoop: true
@@ -838,6 +1001,143 @@ def optimize_performance():
         
     generate_optimization_pr()
 ```
+
+### 7.4 Self-Healing Capabilities
+
+The bot automatically detects and recovers from various failure scenarios:
+
+#### 7.4.1 Circuit Breaker Recovery
+
+**Automatic Recovery Flow:**
+```
+API Failures Detected (3 consecutive)
+  ↓
+Circuit Opens (blocks requests)
+  ↓
+Wait Recovery Timeout (60 seconds)
+  ↓
+Transition to HALF_OPEN (test recovery)
+  ↓
+Attempt Health Check
+  ↓
+Success → Close Circuit (resume normal)
+Failure → Reopen Circuit (wait again)
+```
+
+**Graceful Degradation:**
+- Uses cached responses when circuit is OPEN
+- Continues operations with reduced functionality
+- Automatic health checks every 5 minutes
+- Self-recovery without human intervention
+
+#### 7.4.2 Rate Limit Self-Healing
+
+**Detection:**
+- Monitors API calls per hour
+- Detects 429 (Too Many Requests) responses
+- Tracks rate limit headers
+
+**Recovery:**
+```javascript
+if (rateLimitHit) {
+  // Option 1: Graceful degradation
+  if (cachedResponseAvailable) {
+    return cachedResponse;
+  }
+  
+  // Option 2: Exponential backoff
+  const waitTime = calculateBackoff(attempt);
+  await sleep(waitTime);
+  
+  // Option 3: Circuit breaker protection
+  if (consecutiveRateLimits >= 3) {
+    openCircuitBreaker();
+  }
+}
+```
+
+#### 7.4.3 PR Review Self-Healing
+
+**Automated Response to Review Comments:**
+1. Bot detects review comments on its PRs
+2. Analyzes requested changes
+3. Generates fixes automatically
+4. Pushes updates to same PR
+5. Requests re-review
+6. Tracks resolution in issue comments
+
+**Example Flow:**
+```
+Human Review: "Missing null check on line 45"
+  ↓
+Bot analyzes context
+  ↓
+Generates fix with null check
+  ↓
+Runs tests locally
+  ↓
+Pushes update to PR
+  ↓
+Comments: "✅ Fixed: Added null check as requested"
+  ↓
+Requests re-review
+```
+
+#### 7.4.4 Pipeline Failure Self-Healing
+
+**Automatic Investigation and Fix:**
+1. Monitor workflow detects failure
+2. Creates investigation issue automatically
+3. Bot analyzes failure in next cycle
+4. Generates fix if pattern recognized
+5. Creates PR with fix
+6. Links to investigation issue
+7. Tests fix before merge
+
+**Common Auto-Fixable Issues:**
+- Linting errors
+- Formatting issues
+- Simple test failures
+- Dependency conflicts (minor versions)
+- Flaky test detection and quarantine
+
+**Safety Features:**
+- Maximum 1 investigation issue per run
+- Duplicate detection prevents issue spam
+- Human approval required for complex fixes
+- Rollback capability for failed fixes
+
+#### 7.4.5 Issue State Recovery
+
+**Stale Issue Detection:**
+- Detects issues stuck in "in-progress" > 24 hours
+- Analyzes execution history from comments
+- Determines if recoverable or needs human help
+
+**Recovery Actions:**
+```javascript
+if (issueStuckInProgress) {
+  const history = loadExecutionHistory(issueNumber);
+  
+  if (recoverableError(history.lastError)) {
+    // Reset to ready and retry
+    updateIssueStatus(issueNumber, 'status-ready');
+    addComment('🔄 Automatic recovery attempted');
+  } else {
+    // Escalate to human
+    updateIssueStatus(issueNumber, 'status-blocked');
+    addComment('⚠️ Human assistance required');
+    notifyTeam(issueNumber);
+  }
+}
+```
+
+**Self-Healing Metrics:**
+- Auto-recovery success rate
+- Time to recovery (TTR)
+- Circuit breaker activation frequency
+- Cache hit rate during degradation
+- Issues resolved without human intervention
 
 ---
 
@@ -1078,6 +1378,142 @@ Blocked state:
 - Success/failure tracking
 - Time-series performance data
 - A/B testing capability
+
+### 8.6.5 Duplicate Work Prevention
+
+Comprehensive duplicate detection across all bot operations:
+
+#### Issue Creation Duplicates
+
+**Pipeline Investigation Issues:**
+```javascript
+// CRITICAL: Check BEFORE creating issue
+const existing = await findExistingInvestigationIssue({
+  workflowName: failure.workflow,
+  errorSignature: extractErrorSignature(failure.logs),
+  repo: failure.repo
+});
+
+if (existing) {
+  // Add occurrence to existing issue
+  await addOccurrence(existing, failure);
+  logger.info(`Duplicate found: #${existing.number}`);
+  return; // STOP - don't create duplicate
+}
+
+// Only create if no duplicate found
+await createInvestigationIssue(failure);
+```
+
+**Error Signature Matching:**
+- Extract stack trace fingerprint
+- Normalize error messages
+- Match workflow name + error pattern
+- Check within last 7 days
+- Account for flaky vs persistent failures
+
+**Roadmap Task Issues:**
+```javascript
+// Check if task already has issue
+const existingIssues = await octokit.issues.listForRepo({
+  state: 'open',
+  labels: 'ai-bot-task'
+});
+
+const duplicate = existingIssues.find(issue => 
+  issue.title.includes(taskTitle) ||
+  issue.body.includes(taskId)
+);
+
+if (duplicate) {
+  logger.info(`Task already tracked in #${duplicate.number}`);
+  return duplicate;
+}
+```
+
+#### Work In Progress Duplicates
+
+**WIP Limit Enforcement:**
+```javascript
+// Before starting new task
+const inProgressIssues = await octokit.issues.listForRepo({
+  state: 'open',
+  labels: 'status-in-progress',
+  assignee: 'ai-dev-bot'
+});
+
+if (inProgressIssues.length >= MAX_WIP) {
+  logger.warn(`WIP limit reached (${MAX_WIP}). Finish current tasks first.`);
+  return null; // Don't start new work
+}
+```
+
+**Configuration:**
+```yaml
+safety:
+  maxWIP: 3  # Maximum concurrent tasks
+  maxIssuesPerRun: 1  # Pipeline monitoring limit
+  duplicateCheckFirst: true  # Check before analysis
+  deduplicationWindow: 7  # Days to check for duplicates
+```
+
+#### PR Duplicates
+
+**Branch Name Checking:**
+```javascript
+// Before creating PR
+const existingPRs = await octokit.pulls.list({
+  state: 'open',
+  head: branchName
+});
+
+if (existingPRs.length > 0) {
+  logger.info(`PR already exists for ${branchName}: #${existingPRs[0].number}`);
+  return existingPRs[0]; // Update existing instead
+}
+```
+
+**Issue-PR Linking:**
+```javascript
+// Check if issue already has linked PR
+const linkedPRs = await findLinkedPRs(issueNumber);
+if (linkedPRs.length > 0 && linkedPRs[0].state === 'open') {
+  logger.info(`Issue #${issueNumber} already has PR #${linkedPRs[0].number}`);
+  return linkedPRs[0]; // Use existing PR
+}
+```
+
+#### Safety Mechanisms
+
+**Rate Limit Protection:**
+- Check before expensive operations
+- Cache duplicate check results
+- Batch API calls for efficiency
+
+**Cascade Prevention:**
+```javascript
+// CRITICAL: Only create ONE issue per monitoring run
+if (issuesCreated >= MAX_ISSUES_PER_RUN) {
+  logger.warn('Issue creation limit reached');
+  return; // STOP creating issues
+}
+```
+
+**Self-Exclusion:**
+```yaml
+# Don't monitor the monitoring workflow
+pipelineMonitoring:
+  excludeWorkflows:
+    - 'Monitor GitHub Actions Pipelines'
+    - 'dependabot'
+```
+
+**Deduplication Metrics:**
+- Duplicate detection rate
+- Prevented duplicate issues
+- Cache hit rate for checks
+- False positive rate
+- Time saved by deduplication
 
 ### 8.7 Issue Query Strategies
 
@@ -2170,11 +2606,24 @@ This SDD is a living document:
 - **Orchestrator:** Central coordination module of the bot
 - **Context Analyzer:** Module that understands repository state
 - **Self-Improvement:** Bot's capability to optimize itself
+- **Self-Healing:** Bot's ability to automatically recover from failures
+- **Circuit Breaker:** Safety pattern that blocks requests during outages
+- **Graceful Degradation:** Continuing with reduced functionality during failures
+- **Rate Limiting:** Controlling API call frequency to stay within limits
+- **Cost Optimization:** Strategies to minimize API usage and costs
+- **Duplicate Prevention:** Systems to avoid creating duplicate issues or work
 - **Issue Manager:** Module managing GitHub Issues for task tracking and memory
 - **Bot Memory:** Persistent state stored in GitHub Issue comments
 - **Task Issue:** GitHub Issue representing a single development task
 - **Issue Context:** Historical information and decisions stored in issue comments
+- **Investigation Issue:** Auto-created issue for pipeline failure analysis
+- **Error Signature:** Fingerprint of error for duplicate detection
 - **Milestone:** GitHub Milestone for time-based grouping (optional)
+- **CLOSED State:** Circuit breaker normal operation state
+- **OPEN State:** Circuit breaker failure state (blocks requests)
+- **HALF_OPEN State:** Circuit breaker testing recovery state
+- **TTR:** Time To Recovery (self-healing metric)
+- **Cache Hit Rate:** Percentage of requests served from cache
 
 ---
 
