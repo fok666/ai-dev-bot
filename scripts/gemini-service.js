@@ -313,12 +313,15 @@ class GeminiService {
       
       // Simple health check query
       const testPrompt = 'Reply with: OK';
+      let timeoutHandle;
       const result = await Promise.race([
         this.model.generateContent(testPrompt),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Health check timeout')), 10000)
-        )
-      ]);
+        new Promise((_, reject) => {
+          timeoutHandle = setTimeout(() => reject(new Error('Health check timeout')), 10000);
+        })
+      ]).finally(() => {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      });
       
       const endTime = Date.now();
       const response = result.response;
@@ -475,12 +478,15 @@ class GeminiService {
   }
 
   async generateWithTimeout(prompt) {
+    let timeoutHandle;
     return Promise.race([
       this.model.generateContent(prompt),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Gemini API timeout')), this.config.timeout)
-      )
-    ]);
+      new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error('Gemini API timeout')), this.config.timeout);
+      })
+    ]).finally(() => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    });
   }
 
   isRetryableError(error) {
@@ -1087,6 +1093,22 @@ class GeminiService {
       }
     } catch (error) {
       console.warn('Failed to load cost data:', error.message);
+    }
+  }
+
+  /**
+   * Cleanup method to clear pending timers and prevent resource leaks
+   * Call this before destroying the service instance
+   */
+  cleanup() {
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    // Process any remaining batch queue items synchronously
+    if (this.batchQueue.length > 0) {
+      console.log(`⚠️  Cleanup: Clearing ${this.batchQueue.length} pending batch items`);
+      this.batchQueue = [];
     }
   }
 }

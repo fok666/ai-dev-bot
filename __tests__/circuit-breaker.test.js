@@ -23,6 +23,10 @@ describe('GeminiService - Circuit Breaker', () => {
   });
 
   afterEach(() => {
+    // Cleanup service timers
+    if (service) {
+      service.cleanup();
+    }
     if (fs.existsSync('.context-cache/test-circuit-breaker')) {
       fs.rmSync('.context-cache/test-circuit-breaker', { recursive: true, force: true });
     }

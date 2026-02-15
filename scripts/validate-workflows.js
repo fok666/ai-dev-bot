@@ -172,7 +172,7 @@ class WorkflowValidator {
       commandPatterns.forEach(({ pattern, requiredArgs }) => {
         if (content.match(pattern)) {
           requiredArgs.forEach(arg => {
-            if (!content.match(new RegExp(arg.replace('=', '=')))) {
+            if (!content.match(new RegExp(arg))) {
               this.errors.push(
                 `${filename}: Command ${pattern.source} used without required argument ${arg}`
               );
