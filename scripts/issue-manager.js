@@ -198,6 +198,62 @@ class IssueManager {
   }
 
   /**
+   * Post analysis and proposed correction to investigation issue
+   * This provides transparency before the bot attempts to fix the issue
+   */
+  async postProposedCorrection(issueNumber, analysis) {
+    try {
+      console.log(`🔍 Posting proposed correction to issue #${issueNumber}...`);
+      
+      const body = `## 🧠 AI Analysis & Proposed Correction
+
+### Root Cause Analysis
+
+${analysis.rootCause || 'Analyzing...'}
+
+### Proposed Solution
+
+${analysis.proposedFix || 'Generating solution...'}
+
+**Confidence Level:** ${analysis.confidence || 'Medium'}
+**Estimated Complexity:** ${analysis.complexity || 'Unknown'}
+**Risk Assessment:** ${analysis.risk || 'Low'}
+
+### Implementation Plan
+
+${analysis.implementationSteps ? analysis.implementationSteps.map((step, i) => `${i + 1}. ${step}`).join('\n') : '1. Analyzing codebase\n2. Generating fix\n3. Creating tests\n4. Submitting PR'}
+
+### Files to be Modified
+
+${analysis.filesToModify ? analysis.filesToModify.map(f => `- \`${f}\``).join('\n') : '_Files will be determined during implementation_'}
+
+---
+
+🤖 **Next Steps:**
+- The bot will attempt to implement this fix automatically
+- A PR will be created for review
+- Tests will be run to validate the fix
+- Human review is recommended before merging
+
+> ℹ️ If this analysis seems incorrect, please comment with guidance and the bot will adjust its approach.`;
+      
+      await this.octokit.issues.createComment({
+        owner: this.owner,
+        repo: this.repo,
+        issue_number: issueNumber,
+        body
+      });
+      
+      console.log('✅ Posted proposed correction');
+      return true;
+    } catch (error) {
+      console.error('Error posting proposed correction:', error.message);
+      // Non-fatal - continue with execution
+      return false;
+    }
+  }
+
+  /**
    * Log execution metrics
    */
   async logExecution(issueNumber, executionId, status) {
@@ -374,22 +430,17 @@ Auto-generated task from ROADMAP.md
 
         if (existingIssue) {
           console.log(`   ✅ Duplicate found: ${targetOwner}/${targetRepo}#${existingIssue.number}`);
-          console.log(`   📝 Adding update comment instead of creating new issue`);
+          console.log(`   📝 Updating occurrence tracker instead of creating new comment`);
           
-          // Add comment with new occurrence
-          await this.octokit.issues.createComment({
+          // Update or create a single tracking comment instead of spamming
+          await this.updateOccurrenceTracker({
             owner: targetOwner,
             repo: targetRepo,
             issue_number: existingIssue.number,
-            body: `🔄 **Failure occurred again**
-
-**Run:** [#${analysis.run.id}](${analysis.run.html_url})
-**Time:** ${analysis.run.created_at}
-**Branch:** ${analysis.run.head_branch}
-**SHA:** ${analysis.run.head_sha}`
+            run: analysis.run
           });
           
-          console.log(`   ✅ Updated existing issue instead of creating duplicate`);
+          console.log(`   ✅ Updated occurrence tracker (no spam comments)`);
           continue; // Skip to next failure
         }
 
@@ -461,6 +512,105 @@ Auto-generated task from ROADMAP.md
       console.error('❌ Error creating investigation issues:', error.message);
       console.error('   This is likely due to API errors or network issues.');
       throw error;
+    }
+  }
+
+  /**
+   * Update occurrence tracker comment for repeated failures
+   * Uses a single comment that gets updated instead of creating spam
+   */
+  async updateOccurrenceTracker(params) {
+    const { owner, repo, issue_number, run } = params;
+    
+    try {
+      // Find existing tracker comment
+      const { data: comments } = await this.octokit.issues.listComments({
+        owner,
+        repo,
+        issue_number
+      });
+      
+      const trackerComment = comments.find(c => 
+        c.body.includes('## 📊 Occurrence Tracker')
+      );
+      
+      const occurrence = {
+        run_id: run.id,
+        run_url: run.html_url,
+        time: run.created_at,
+        branch: run.head_branch,
+        sha: run.head_sha.substring(0, 7)
+      };
+      
+      if (trackerComment) {
+        // Parse existing occurrences from comment
+        const occurrenceMatch = trackerComment.body.match(/Total Occurrences: (\d+)/);
+        const currentCount = occurrenceMatch ? parseInt(occurrenceMatch[1]) : 1;
+        const newCount = currentCount + 1;
+        
+        // Extract existing occurrences list
+        const listMatch = trackerComment.body.match(/### Recent Occurrences([\s\S]*?)(?=###|$)/);
+        const existingList = listMatch ? listMatch[1].trim().split('\n').filter(l => l.startsWith('-')) : [];
+        
+        // Keep only last 5 occurrences
+        const recentOccurrences = [
+          `- **Run [#${occurrence.run_id}](${occurrence.run_url})** at ${occurrence.time} (${occurrence.branch}@${occurrence.sha})`,
+          ...existingList.slice(0, 4)
+        ];
+        
+        // Build updated comment
+        const updatedBody = `## 📊 Occurrence Tracker
+
+**Total Occurrences:** ${newCount}
+**Last Updated:** ${new Date().toISOString()}
+**Status:** ${newCount >= 10 ? '🔴 Critical - High frequency' : newCount >= 5 ? '🟡 Warning - Repeated failures' : '🟢 Monitoring'}
+
+### Recent Occurrences
+
+${recentOccurrences.join('\n')}
+
+${newCount > 5 ? `\n---\n> ⚠️ **Note:** Showing last 5 of ${newCount} total occurrences to reduce noise.` : ''}
+
+---
+*This tracker is automatically updated. No new comments will be created for duplicate failures.*`;
+        
+        // Update existing comment
+        await this.octokit.issues.updateComment({
+          owner,
+          repo,
+          comment_id: trackerComment.id,
+          body: updatedBody
+        });
+        
+        console.log(`   ✅ Updated tracker: ${newCount} total occurrences`);
+      } else {
+        // Create initial tracker comment
+        const initialBody = `## 📊 Occurrence Tracker
+
+**Total Occurrences:** 2 (including initial failure)
+**Last Updated:** ${new Date().toISOString()}
+**Status:** 🟢 Monitoring
+
+### Recent Occurrences
+
+- **Run [#${occurrence.run_id}](${occurrence.run_url})** at ${occurrence.time} (${occurrence.branch}@${occurrence.sha})
+
+---
+*This tracker is automatically updated. No new comments will be created for duplicate failures.*`;
+        
+        await this.octokit.issues.createComment({
+          owner,
+          repo,
+          issue_number,
+          body: initialBody
+        });
+        
+        console.log(`   ✅ Created occurrence tracker`);
+      }
+      
+    } catch (error) {
+      console.error('   ⚠️  Failed to update occurrence tracker:', error.message);
+      // Don't throw - this is non-critical
     }
   }
 
@@ -613,9 +763,22 @@ async function main() {
         await manager.createInvestigationIssues(analysesFile);
         break;
 
+      case 'post-proposed-fix':
+        const fixIssue = process.argv.find(arg => arg.startsWith('--issue='))?.split('=')[1];
+        const analysisFile = process.argv.find(arg => arg.startsWith('--analysis='))?.split('=')[1];
+        
+        if (!fixIssue || !analysisFile) {
+          console.error('Error: --issue=<number> and --analysis=<file> required');
+          process.exit(1);
+        }
+        
+        const analysisData = JSON.parse(fs.readFileSync(analysisFile, 'utf8'));
+        await manager.postProposedCorrection(parseInt(fixIssue), analysisData);
+        break;
+
       default:
         console.error('Unknown command:', command);
-        console.error('Available commands: find-next-task, load-context, log-execution, parse-roadmap, create-tasks, create-investigation-issues');
+        console.error('Available commands: find-next-task, load-context, log-execution, parse-roadmap, create-tasks, create-investigation-issues, post-proposed-fix');
         process.exit(1);
     }
   } catch (error) {
