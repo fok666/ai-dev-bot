@@ -335,6 +335,7 @@ Auto-generated task from ROADMAP.md
 
   /**
    * Create investigation issues from workflow failure analyses
+   * SAFETY: Process ONE failure at a time to prevent cascading issues
    */
   async createInvestigationIssues(analysesFile) {
     try {
@@ -342,8 +343,7 @@ Auto-generated task from ROADMAP.md
 
       const analyses = JSON.parse(fs.readFileSync(analysesFile, 'utf8'));
       let issuesCreated = 0;
-      const MAX_ISSUES_PER_RUN = 5; // Limit to prevent rate limiting
-      const DELAY_BETWEEN_ISSUES = 2000; // 2 second delay
+      const MAX_ISSUES_PER_RUN = 1; // CRITICAL: Only one issue per run to prevent rate limiting
 
       // Sort by priority to handle most important first
       const sortedAnalyses = analyses.sort((a, b) => {
@@ -353,19 +353,17 @@ Auto-generated task from ROADMAP.md
         return order[priorityA] - order[priorityB];
       });
 
-      for (const analysis of sortedAnalyses) {
-        if (issuesCreated >= MAX_ISSUES_PER_RUN) {
-          console.log(`\n⚠️  Reached limit of ${MAX_ISSUES_PER_RUN} issues per run. Remaining failures will be processed next time.`);
-          break;
-        }
+      console.log(`📊 Found ${sortedAnalyses.length} failure(s). Processing maximum ${MAX_ISSUES_PER_RUN} per run.`);
 
+      for (const analysis of sortedAnalyses) {
         // Extract repository info from analysis
         const targetOwner = analysis.run._repo_owner || this.owner;
         const targetRepo = analysis.run._repo_name || this.repo;
         
-        console.log(`\n🔍 Processing failure in ${targetOwner}/${targetRepo}...`);
+        console.log(`\n🔍 Checking failure in ${targetOwner}/${targetRepo}: ${analysis.run.name}`);
         
-        // Check if investigation issue already exists for this workflow/error
+        // FIRST: Check if investigation issue already exists BEFORE analyzing
+        // This prevents wasted API calls and ensures we don't create duplicates
         const existingIssue = await this.findExistingInvestigationIssue(
           analysis.run.name,
           analysis.errors[0] || 'unknown',
@@ -374,7 +372,8 @@ Auto-generated task from ROADMAP.md
         );
 
         if (existingIssue) {
-          console.log(`   ℹ️  Investigation already exists: ${targetOwner}/${targetRepo}#${existingIssue.number}`);
+          console.log(`   ✅ Duplicate found: ${targetOwner}/${targetRepo}#${existingIssue.number}`);
+          console.log(`   📝 Adding update comment instead of creating new issue`);
           
           // Add comment with new occurrence
           await this.octokit.issues.createComment({
@@ -388,10 +387,22 @@ Auto-generated task from ROADMAP.md
 **Branch:** ${analysis.run.head_branch}
 **SHA:** ${analysis.run.head_sha}`
           });
-          continue;
+          
+          console.log(`   ✅ Updated existing issue instead of creating duplicate`);
+          continue; // Skip to next failure
         }
 
-        // Create new investigation issue in target repository
+        // Stop if we've already created our one allowed issue
+        if (issuesCreated >= MAX_ISSUES_PER_RUN) {
+          console.log(`\n⚠️  Already created ${MAX_ISSUES_PER_RUN} issue(s) this run.`);
+          console.log(`   ⏭️  Skipping remaining ${sortedAnalyses.length - sortedAnalyses.indexOf(analysis)} failure(s).`);
+          console.log(`   ⏰ They will be processed in the next scheduled run.`);
+          break;
+        }
+
+        // No duplicate found - safe to create new investigation issue
+        console.log(`   ✅ No duplicate found. Creating new investigation issue...`);
+        
         const title = `🔥 Pipeline Failure: ${analysis.run.name}`;
         const body = this.formatInvestigationIssue(analysis);
         
@@ -416,15 +427,16 @@ Auto-generated task from ROADMAP.md
         console.log(`   ✅ Created investigation issue: ${targetOwner}/${targetRepo}#${issue.number}`);
         console.log(`   🔗 ${issue.html_url}`);
         issuesCreated++;
-
-        // Rate limiting: delay between issue creations
-        if (issuesCreated < sortedAnalyses.length) {
-          console.log(`   ⏳ Waiting ${DELAY_BETWEEN_ISSUES/1000}s before next issue...`);
-          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_ISSUES));
-        }
+        
+        // SAFETY: Stop after creating ONE issue to prevent rate limiting
+        console.log(`\n🛑 Created ${issuesCreated} issue. Stopping to prevent rate limiting.`);
+        break;
       }
 
-      console.log(`\n✅ Created ${issuesCreated} investigation issue(s)`);
+      console.log(`\n✅ Processing complete:`);
+      console.log(`   📊 Issues created: ${issuesCreated}`);
+      console.log(`   💬 Existing issues updated: ${sortedAnalyses.filter((a, i) => i < sortedAnalyses.indexOf(sortedAnalyses.find(x => x === sortedAnalyses[issuesCreated]))).length}`);
+      console.log(`   ⏰ Next run will process any remaining failures`);
       
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `issues_created=${issuesCreated}\n`);
@@ -437,15 +449,16 @@ Auto-generated task from ROADMAP.md
       // Check for rate limiting errors
       if (error.status === 403 && error.message.includes('rate limit')) {
         console.error('⚠️  GitHub rate limit exceeded. Stopping issue creation.');
-        console.error('   Issues created before limit:', issuesCreated);
-        return issuesCreated;
+        console.error('   Issues created before limit:', issuesCreated || 0);
+        return issuesCreated || 0;
       }
       if (error.status === 403 && error.message.includes('secondary rate limit')) {
         console.error('⚠️  GitHub secondary rate limit exceeded. Stopping issue creation.');
-        console.error('   Issues created before limit:', issuesCreated);
-        return issuesCreated;
+        console.error('   Issues created before limit:', issuesCreated || 0);
+        return issuesCreated || 0;
       }
-      console.error('Error creating investigation issues:', error.message);
+      console.error('❌ Error creating investigation issues:', error.message);
+      console.error('   This is likely due to API errors or network issues.');
       throw error;
     }
   }

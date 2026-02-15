@@ -280,6 +280,8 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 - Update issue status based on PR outcomes
 - Generate throughput metrics from issue data
 - Create investigation issues for pipeline failures
+- **Check for duplicate issues BEFORE creating new ones**
+- **Process ONE failure at a time to prevent cascades**
 - Track recurring CI/CD problems
 - Link pipeline failures to related code changes
 
@@ -290,6 +292,12 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
 - Milestones for time-based batching
 - Project boards for visualization
 - GitHub Actions API for workflow status
+
+**Safety Features:**
+- Maximum 1 investigation issue per monitoring run
+- Duplicate detection before analysis to save API calls
+- Rate limit error handling with graceful degradation
+- Self-exclusion (monitor doesn't monitor itself)
 
 ---
 
@@ -424,30 +432,49 @@ The bot uses GitHub Issues as its primary task management and memory system. Eac
    ↓
 3. Get failed workflow runs in last 24 hours
    ↓
-4. For each failed run:
+4. Sort failures by priority (high/medium/low)
    ↓
-5. Check if investigation issue already exists
+5. For HIGHEST priority failure only:
    ↓
-6. If not: Download workflow logs
+6. FIRST: Check if investigation issue already exists
    ↓
-7. Gemini-CLI analyzes failure patterns
+7. If duplicate found:
    ↓
-8. Extract error messages and stack traces
+8. Add comment to existing issue with new occurrence
    ↓
-9. Identify likely root cause
+9. Skip to exit (no new issue created)
    ↓
-10. Issue Manager creates investigation issue
+10. If NO duplicate:
    ↓
-11. Add labels: type-bugfix, priority-high, status-ready
+11. Download workflow logs
    ↓
-12. Link to failed workflow run
+12. Gemini-CLI analyzes failure patterns
    ↓
-13. Include analysis and suggested fixes
+13. Extract error messages and stack traces
    ↓
-14. Assign to ai-dev-bot or relevant team
+14. Identify likely root cause
    ↓
-15. Bot can then work on fix in next cycle
+15. Issue Manager creates ONE investigation issue
+   ↓
+16. Add labels: type-investigate, priority-high, status-ready
+   ↓
+17. Link to failed workflow run
+   ↓
+18. Include analysis and suggested fixes
+   ↓
+19. Assign to ai-dev-bot or relevant team
+   ↓
+20. STOP - remaining failures processed in next cycle
+   ↓
+21. Bot can work on fix in subsequent runs
 ```
+
+**Key Safety Features:**
+- **One at a Time:** Maximum 1 issue created per monitoring run
+- **Duplicate Check First:** Checks for existing issues BEFORE analysis
+- **Prevents Cascades:** Stops after creating one issue
+- **Self-Exclusion:** Monitor workflow doesn't monitor itself
+- **Graceful Degradation:** Handles rate limits without crashing
 
 ---
 
@@ -517,9 +544,12 @@ issues:
   pipelineMonitoring:
     checkInterval: '0 */6 * * *'  # Every 6 hours
     lookbackHours: 24
+    maxIssuesPerRun: 1              # CRITICAL: Only create 1 issue per run
+    duplicateCheckFirst: true       # Check for duplicates BEFORE analysis
     excludeWorkflows:
       - 'dependabot'
       - 'codeql'
+      - 'Monitor GitHub Actions Pipelines'  # Don't monitor self
     autoCreateIssues: true
     issuePriority: 'high'
   labelPrefix: 'ai-bot'
@@ -2418,7 +2448,10 @@ interface IssueManager {
   getExecutionHistory(issueNumber: number): ExecutionRecord[];
   getCycleTime(issueNumber: number): number;  // Time from open to closed
   getThroughput(timeWindow: string): number;  // Issues completed per period
-  createInvestigationIssue(failure: WorkflowFailure, analysis: FailureAnalysis): Issue;
+  
+  // Pipeline monitoring with safety controls
+  createInvestigationIssues(analysesFile: string): Promise<number>;  // Returns count created (max 1)
+  findExistingInvestigationIssue(workflowName: string, errorSignature: string, owner: string, repo: string): Promise<Issue | null>;
   checkDuplicateInvestigation(workflowName: string, errorSignature: string): Issue | null;
 }
 

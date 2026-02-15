@@ -88,6 +88,11 @@ jobs:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
+          # SAFETY: Script creates maximum 1 issue per run to prevent rate limiting
+          # - Checks for duplicates FIRST before creating issues
+          # - Processes highest priority failure only
+          # - Remaining failures handled in next scheduled run
+          # - This prevents the feedback loop that caused 50+ duplicate issues
           ANALYSES_FILE="${{ steps.wrap.outputs.analyses_file || steps.analyze.outputs.analyses_file }}"
           node scripts/issue-manager.js create-investigation-issues \
             --analyses="$ANALYSES_FILE"

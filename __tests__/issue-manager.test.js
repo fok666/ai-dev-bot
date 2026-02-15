@@ -183,7 +183,7 @@ describe('Issue Manager CLI', () => {
       });
 
       // Should handle empty array gracefully
-      expect(result.stdout).toMatch(/0.*issue/i);
+      expect(result.stdout).toMatch(/Issues created:\s*0/i);
     });
   });
 
