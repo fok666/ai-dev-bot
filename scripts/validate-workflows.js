@@ -100,20 +100,23 @@ class WorkflowValidator {
     });
 
     // 5. Check if scripts are called with proper error handling
+    // Note: Node.js scripts in scripts/ directory handle GITHUB_OUTPUT internally
     if (workflowData.jobs) {
       Object.entries(workflowData.jobs).forEach(([jobName, job]) => {
         if (job.steps) {
           job.steps.forEach((step, idx) => {
-            if (step.run && step.run.includes('node scripts/')) {
-              // Check if output is properly captured
-              if (step.id && !step.run.includes('GITHUB_OUTPUT')) {
+            if (step.run && step.id) {
+              // Skip warning for Node.js scripts - they handle GITHUB_OUTPUT internally
+              const isNodeScript = step.run.includes('node scripts/');
+              
+              if (!isNodeScript && !step.run.includes('GITHUB_OUTPUT') && !step.run.includes('>> $GITHUB_OUTPUT')) {
                 const nextSteps = job.steps.slice(idx + 1);
                 const usesOutput = nextSteps.some(s => 
                   s.if?.includes(`steps.${step.id}.outputs`) ||
                   s.run?.includes(`steps.${step.id}.outputs`)
                 );
 
-                if (usesOutput && !step.run.includes('GITHUB_OUTPUT')) {
+                if (usesOutput) {
                   this.warnings.push(
                     `${filename}: Step "${step.name || step.id}" may not be writing to GITHUB_OUTPUT but is referenced by other steps`
                   );
@@ -132,9 +135,13 @@ class WorkflowValidator {
           job.steps.forEach(step => {
             if (step.if && step.if.includes('.outputs.')) {
               // Check for proper empty string handling
-              if (step.if.match(/!= ['"]['"]/) && !step.if.includes(' || ')) {
+              // Only warn if != '' is used alone (not in compound conditions with &&)
+              const hasEmptyCheck = step.if.match(/!= ['"]['"]/ );
+              const isCompoundWithAnd = step.if.match(/\w+\.outputs\.\w+\s*(==|!=).*&&.*!= ['"]['"]/ );
+              
+              if (hasEmptyCheck && !step.if.includes(' || ') && !isCompoundWithAnd) {
                 this.warnings.push(
-                  `${filename}: Step "${step.name}" checks for != '' which may not work as expected for missing outputs`
+                  `${filename}: Step "${step.name}" uses != '' check. Consider using truthy check: if: steps.foo.outputs.bar`
                 );
               }
             }

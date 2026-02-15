@@ -53,7 +53,7 @@ jobs:
           
       - name: Extract Issue Number
         id: extract
-        if: steps.pr.outputs.pr_number != ''
+        if: steps.pr.outputs.pr_number
         env:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
@@ -68,7 +68,7 @@ jobs:
           
       - name: Check Merge Conditions
         id: check
-        if: steps.pr.outputs.pr_number != ''
+        if: steps.pr.outputs.pr_number
         env:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
