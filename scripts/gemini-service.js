@@ -937,7 +937,9 @@ class GeminiService {
     }
     
     // Alert if approaching failure threshold while CLOSED
-    if (cb.state === 'CLOSED' && cb.consecutiveFailures >= cb.consecutiveFailureThreshold * 0.7) {
+    // Use Math.ceil to ensure we alert before hitting the threshold
+    const warningThreshold = Math.ceil(cb.consecutiveFailureThreshold * 0.7);
+    if (cb.state === 'CLOSED' && cb.consecutiveFailures >= warningThreshold && cb.consecutiveFailures < cb.consecutiveFailureThreshold) {
       alerts.push({
         severity: 'WARNING',
         message: `Approaching circuit breaker threshold: ${cb.consecutiveFailures}/${cb.consecutiveFailureThreshold} consecutive failures.`,
