@@ -164,7 +164,7 @@ class WorkflowValidator {
     
     if (!isTestWorkflow) {
       const commandPatterns = [
-        { pattern: /analyze-workflow-failure/, requiredArgs: ['--run-id='] },
+        { pattern: /analyze-workflow-failure(?!s)/, requiredArgs: ['--run-id='] },
         { pattern: /analyze-workflow-failures/, requiredArgs: ['--failures='] },
         { pattern: /create-investigation-issues/, requiredArgs: ['--analyses='] }
       ];

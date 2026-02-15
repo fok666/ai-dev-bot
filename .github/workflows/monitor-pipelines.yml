@@ -4,9 +4,10 @@ on:
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
-  workflow_run:
-    workflows: ['*']
-    types: [completed]
+  # DISABLED: workflow_run to prevent feedback loops and rate limit issues
+  # workflow_run:
+  #   workflows: ['*']
+  #   types: [completed]
 
 permissions:
   actions: read
@@ -14,14 +15,61 @@ permissions:
   contents: read
 
 jobs:
+  # CIRCUIT BREAKER: Check if monitoring should run
+  check-circuit-breaker:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      reason: ${{ steps.check.outputs.reason }}
+    steps:
+      - name: Check Recent Monitor Runs
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get recent monitor workflow runs in last hour
+          RECENT_RUNS=$(gh run list \
+            --repo ${{ github.repository }} \
+            --workflow "Monitor GitHub Actions Pipelines" \
+            --created ">=$(date -u -d '1 hour ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-1H '+%Y-%m-%dT%H:%M:%SZ')" \
+            --json conclusion,createdAt \
+            --jq 'length')
+          
+          echo "Recent monitor runs in last hour: $RECENT_RUNS"
+          
+          # CIRCUIT BREAKER: Max 3 runs per hour
+          if [ "$RECENT_RUNS" -ge 3 ]; then
+            echo "⛔ Circuit breaker OPEN: Too many monitor runs ($RECENT_RUNS in last hour)"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "reason=Circuit breaker: $RECENT_RUNS runs in last hour (max: 3)" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check for manual dispatch - always allow
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "✅ Manual dispatch - allowing run"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "reason=Manual dispatch" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check for scheduled run - allow
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "✅ Scheduled run - allowing"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "reason=Scheduled" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Default: don't run
+          echo "🚫 Not scheduled or manual - skipping"
+          echo "should_run=false" >> $GITHUB_OUTPUT
+          echo "reason=Not scheduled or manual dispatch" >> $GITHUB_OUTPUT
+
   monitor:
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'failure' &&
-       github.event.workflow_run.name != 'Monitor GitHub Actions Pipelines')
+    needs: check-circuit-breaker
+    if: needs.check-circuit-breaker.outputs.should_run == 'true'
     
     steps:
       - name: Checkout code
@@ -43,16 +91,9 @@ jobs:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_run" ]; then
-            # Specific workflow failure (in bot repo only)
-            echo "workflow_run_id=${{ github.event.workflow_run.id }}" >> $GITHUB_OUTPUT
-            echo "workflow_name=${{ github.event.workflow_run.name }}" >> $GITHUB_OUTPUT
-            echo "has_failures=true" >> $GITHUB_OUTPUT
-          else
-            # Scan all configured repositories for recent failures
-            node scripts/context-analyzer.js scan-pipelines-multi-repo \
-              --lookback-hours=24
-          fi
+          # Scan all configured repositories for recent failures
+          node scripts/context-analyzer.js scan-pipelines-multi-repo \
+            --lookback-hours=24
           
       - name: Analyze Failures
         if: steps.scan.outputs.has_failures == 'true'
@@ -62,28 +103,21 @@ jobs:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          if [ -n "${{ steps.scan.outputs.workflow_run_id }}" ]; then
-            # Analyze specific workflow failure
-            node scripts/context-analyzer.js analyze-workflow-failure \
-              --run-id="${{ steps.scan.outputs.workflow_run_id }}" \
-              --workflow-name="${{ steps.scan.outputs.workflow_name }}"
-          else
-            # Analyze all recent failures
-            node scripts/context-analyzer.js analyze-workflow-failures \
-              --failures="${{ steps.scan.outputs.failures_file }}"
-          fi
+          # Analyze all recent failures
+          node scripts/context-analyzer.js analyze-workflow-failures \
+            --failures="${{ steps.scan.outputs.failures_file }}"
       
-      - name: Wrap Analysis for Issue Creation
-        if: steps.scan.outputs.has_failures == 'true' && steps.analyze.outputs.analysis_file != ''
+      - name: Prepare Analysis for Issue Creation
+        if: steps.scan.outputs.has_failures == 'true' && steps.analyze.outputs.analyses_file != ''
         id: wrap
         run: |
-          # Wrap single analysis in array format for create-investigation-issues
-          ANALYSES_FILE=".context-cache/workflow-analyses.json"
-          echo "[$(cat ${{ steps.analyze.outputs.analysis_file }})]" > $ANALYSES_FILE
-          echo "analyses_file=$ANALYSES_FILE" >> $GITHUB_OUTPUT
+          # The analyses file is already in the correct format from analyze-workflow-failures
+          echo "analyses_file=${{ steps.analyze.outputs.analyses_file }}" >> $GITHUB_OUTPUT
           
       - name: Create Investigation Issues
         if: steps.scan.outputs.has_failures == 'true' && (steps.wrap.outputs.analyses_file != '' || steps.analyze.outputs.analyses_file != '')
+        id: create_issues
+        continue-on-error: true
         env:
           GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
@@ -94,16 +128,24 @@ jobs:
           # - Remaining failures handled in next scheduled run
           # - This prevents the feedback loop that caused 50+ duplicate issues
           ANALYSES_FILE="${{ steps.wrap.outputs.analyses_file || steps.analyze.outputs.analyses_file }}"
-          node scripts/issue-manager.js create-investigation-issues \
-            --analyses="$ANALYSES_FILE"
           
-      - name: Link to Failed Workflow (Single Failure)
-        if: github.event_name == 'workflow_run'
-        env:
-          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          echo "✅ Investigation issue created for workflow run ${{ github.event.workflow_run.id }}"
+          # Add error handling for rate limits
+          if ! node scripts/issue-manager.js create-investigation-issues \
+            --analyses="$ANALYSES_FILE"; then
+            EXIT_CODE=$?
+            echo "⚠️ Issue creation failed with exit code: $EXIT_CODE"
+            
+            # Check if it's a rate limit error
+            if [ $EXIT_CODE -eq 1 ]; then
+              echo "rate_limited=true" >> $GITHUB_OUTPUT
+              echo "🔴 Likely hit rate limit - circuit breaker will prevent next run"
+            fi
+            
+            # Don't fail the workflow - let circuit breaker handle it
+            exit 0
+          fi
+          
+          echo "rate_limited=false" >> $GITHUB_OUTPUT
           
       - name: Summary
         if: always()
@@ -111,13 +153,29 @@ jobs:
           echo "## Pipeline Monitoring Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
+          # Circuit breaker status
+          if [ "${{ needs.check-circuit-breaker.outputs.should_run }}" != "true" ]; then
+            echo "⛔ **Circuit Breaker: OPEN**" >> $GITHUB_STEP_SUMMARY
+            echo "Reason: ${{ needs.check-circuit-breaker.outputs.reason }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️  Monitoring workflow did not run to prevent rate limit issues" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          
+          echo "✅ Circuit Breaker: CLOSED" >> $GITHUB_STEP_SUMMARY
+          echo "Reason: ${{ needs.check-circuit-breaker.outputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
           if [ "${{ steps.scan.outputs.has_failures }}" == "true" ]; then
             echo "✅ Scanned for workflow failures" >> $GITHUB_STEP_SUMMARY
             
-            if [ -n "${{ steps.analyze.outputs.issues_created }}" ]; then
+            # Check for rate limit
+            if [ "${{ steps.create_issues.outputs.rate_limited }}" == "true" ]; then
+              echo "⚠️  **Rate Limited** - Circuit breaker will prevent next run" >> $GITHUB_STEP_SUMMARY
+            elif [ -n "${{ steps.analyze.outputs.issues_created }}" ]; then
               echo "📝 Created ${{ steps.analyze.outputs.issues_created }} investigation issue(s)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "ℹ️  No new investigation issues needed" >> $GITHUB_STEP_SUMMARY
+              echo "ℹ️  No new investigation issues needed (duplicates found or updated)" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "✓ No recent workflow failures detected" >> $GITHUB_STEP_SUMMARY
