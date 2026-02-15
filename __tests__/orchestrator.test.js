@@ -6,6 +6,16 @@ describe('Orchestrator', () => {
   const testConfigPath = '.test-config.yml';
   const testSddPath = '.test-sdd.md';
 
+  beforeEach(() => {
+    // Clean up before each test to avoid state leakage
+    if (fs.existsSync(testConfigPath)) {
+      fs.unlinkSync(testConfigPath);
+    }
+    if (fs.existsSync(testSddPath)) {
+      fs.unlinkSync(testSddPath);
+    }
+  });
+
   afterEach(() => {
     if (fs.existsSync(testConfigPath)) {
       fs.unlinkSync(testConfigPath);

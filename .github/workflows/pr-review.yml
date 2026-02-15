@@ -65,9 +65,14 @@ jobs:
           REVIEW_EOF
           
           # Post review based on action
+          # Note: GitHub Actions cannot approve PRs, so APPROVE becomes COMMENT with recommendation
           if [ "$REVIEW_ACTION" == "APPROVE" ]; then
+            echo "" >> /tmp/review_body.txt
+            echo "---" >> /tmp/review_body.txt
+            echo "✅ **Recommendation:** This PR looks good and is ready for approval." >> /tmp/review_body.txt
+            echo "_(GitHub Actions cannot approve PRs directly - manual approval required)_" >> /tmp/review_body.txt
             gh pr review "${{ github.event.pull_request.number }}" \
-              --approve --body-file /tmp/review_body.txt
+              --comment --body-file /tmp/review_body.txt
           elif [ "$REVIEW_ACTION" == "REQUEST_CHANGES" ]; then
             gh pr review "${{ github.event.pull_request.number }}" \
               --request-changes --body-file /tmp/review_body.txt

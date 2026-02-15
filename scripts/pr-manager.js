@@ -154,6 +154,11 @@ Keep response concise (under 200 words).`;
 
       console.log(`\n✅ Review decision: ${action}`);
       
+      // Note: GitHub Actions cannot approve PRs, action will be converted to COMMENT in workflow
+      if (action === 'APPROVE' && process.env.GITHUB_ACTIONS) {
+        console.log('⚠️  Note: GitHub Actions cannot approve PRs - recommendation will be posted as comment');
+      }
+      
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, 'should_review=true\n');
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_body=${reviewText.replace(/\n/g, ' ')}\n`);
