@@ -34,8 +34,8 @@ gemini:
     contextCacheTTL: 3600           # 1 hour TTL
     
     # Spending limits
-    dailySpendingLimit: 5.00        # $5/day max
-    monthlySpendingLimit: 100.00    # $100/month max
+    dailySpendingLimit: 3.00        # $3/day max
+    monthlySpendingLimit: 20.00    # $20/month max
     alertThreshold: 0.80            # Alert at 80% of limit
   
   # Generation parameters

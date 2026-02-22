@@ -64,6 +64,12 @@ jobs:
           ${{ steps.review.outputs.review_body }}
           REVIEW_EOF
           
+          # Prevent requesting changes on own PR
+          if [ "${{ github.actor }}" = "${{ github.event.pull_request.user.login }}" ] && [ "$REVIEW_ACTION" == "REQUEST_CHANGES" ]; then
+            echo "Cannot request changes on own PR; switching to comment."
+            REVIEW_ACTION="COMMENT"
+          fi
+          
           # Post review based on action
           # Note: GitHub Actions cannot approve PRs, so APPROVE becomes COMMENT with recommendation
           if [ "$REVIEW_ACTION" == "APPROVE" ]; then
