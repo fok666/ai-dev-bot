@@ -15,8 +15,42 @@ jobs:
   review:
     runs-on: ubuntu-latest
     if: github.actor != 'ai-dev-bot' && !github.event.pull_request.draft
+    timeout-minutes: 15
     
     steps:
+      - name: Check if Already Reviewed
+        env:
+          GH_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          # Skip if this is a review submitted by GitHub Actions (prevents loop)
+          if [ "${{ github.event_name }}" = "pull_request_review" ]; then
+            REVIEWER="${{ github.event.review.user.login }}"
+            if [ "$REVIEWER" = "github-actions[bot]" ] || [ "$REVIEWER" = "ai-dev-bot" ]; then
+              echo "Skipping: Review was submitted by bot (prevents loop)"
+              exit 0
+            fi
+          fi
+          
+          # Check if bot has already reviewed this commit
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          CURRENT_SHA="${{ github.event.pull_request.head.sha }}"
+          
+          echo "Checking for existing reviews on commit $CURRENT_SHA..."
+          
+          # Get all reviews by github-actions bot
+          EXISTING_REVIEW=$(gh api \
+            "/repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" or .user.login == \"ai-dev-bot\") | select(.commit_id == \"$CURRENT_SHA\") | .id" \
+            | head -1)
+          
+          if [ -n "$EXISTING_REVIEW" ]; then
+            echo "Skipping: Bot has already reviewed this commit ($CURRENT_SHA)"
+            echo "Existing review ID: $EXISTING_REVIEW"
+            exit 0
+          fi
+          
+          echo "No existing review found for this commit. Proceeding with review..."
+          
       - name: Checkout PR
         uses: actions/checkout@v6
         with:
