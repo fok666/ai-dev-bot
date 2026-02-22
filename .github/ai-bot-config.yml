@@ -139,7 +139,7 @@ issues:
 # PR management
 pullRequests:
   autoCreate: true
-  autoMerge: false
+  autoMerge: true  # ENABLED for full autonomy
   linkToIssue: true
   autoMergeConditions:
     allChecksPassed: true
@@ -154,11 +154,12 @@ pullRequests:
     
 # Testing requirements
 testing:
-  runTests: false  # Disabled for initial POC
+  runTests: true  # ENABLED for quality assurance
   frameworks:
     javascript: 'jest'
     python: 'pytest'
-  requiredChecks: []
+  requiredChecks:
+    - 'test-validation'
     
 # Self-improvement
 selfImprovement:
