@@ -139,7 +139,7 @@ issues:
 # PR management
 pullRequests:
   autoCreate: true
-  autoMerge: true  # ENABLED for full autonomy
+  autoMerge: false  # Disabled per SDD recommendation - enable per-repo if desired
   linkToIssue: true
   autoMergeConditions:
     allChecksPassed: true

@@ -218,7 +218,10 @@ class IssueManager {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      const contextFile = path.join(tempDir, `context-${owner}-${repo}-${issueNumber}.json`);
+      // Sanitize owner and repo to prevent path traversal
+      const safeOwner = path.basename(owner).replace(/[^a-zA-Z0-9_-]/g, '');
+      const safeRepo = path.basename(repo).replace(/[^a-zA-Z0-9_-]/g, '');
+      const contextFile = path.join(tempDir, `context-${safeOwner}-${safeRepo}-${issueNumber}.json`);
       fs.writeFileSync(contextFile, JSON.stringify(context, null, 2));
 
       console.log(`✅ Context loaded: ${executionHistory.length} previous attempts`);
