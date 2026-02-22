@@ -9,11 +9,11 @@ bot:
 # Gemini AI Configuration
 gemini:
   # Model selection (use cheapest appropriate model)
-  defaultModel: 'gemini-1.5-flash'  # $0.075-$0.30/M tokens
+  defaultModel: 'gemini-2.5-flash'  # $0.075-$0.30/M tokens
   models:
-    simple: 'gemini-1.5-flash-8b'    # $0.0375-$0.15/M tokens - Simple queries
-    standard: 'gemini-1.5-flash'      # $0.075-$0.30/M tokens - Standard tasks
-    complex: 'gemini-1.5-pro'         # $1.25-$5.00/M tokens - Complex reasoning
+    simple: 'gemini-2.5-flash-lite'    # $0.0375-$0.15/M tokens - Simple queries
+    standard: 'gemini-2.5-flash'      # $0.075-$0.30/M tokens - Standard tasks
+    complex: 'gemini-2.5-pro'         # $1.25-$5.00/M tokens - Complex reasoning
   
   # Intelligent model selection based on task complexity
   autoSelectModel: true
@@ -34,15 +34,15 @@ gemini:
     contextCacheTTL: 3600           # 1 hour TTL
     
     # Spending limits
-    dailySpendingLimit: 5.00        # $5/day max
-    monthlySpendingLimit: 100.00    # $100/month max
+    dailySpendingLimit: 2.00        # $2/day max
+    monthlySpendingLimit: 20.00    # $20/month max
     alertThreshold: 0.80            # Alert at 80% of limit
   
   # Generation parameters
-  temperature: 0.3
+  temperature: 1
   maxOutputTokens: 8096
   topP: 0.95
-  topK: 40
+  topK: 64
   
   # Rate limiting and reliability
   rateLimitPerHour: 100
