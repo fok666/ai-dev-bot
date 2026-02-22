@@ -3,8 +3,7 @@ name: AI PR Reviewer
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
-  pull_request_review:
-    types: [submitted]
+  # Removed pull_request_review trigger to prevent infinite loops
 
 permissions:
   contents: read
@@ -22,15 +21,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          # Skip if this is a review submitted by GitHub Actions (prevents loop)
-          if [ "${{ github.event_name }}" = "pull_request_review" ]; then
-            REVIEWER="${{ github.event.review.user.login }}"
-            if [ "$REVIEWER" = "github-actions[bot]" ] || [ "$REVIEWER" = "ai-dev-bot" ]; then
-              echo "Skipping: Review was submitted by bot (prevents loop)"
-              exit 0
-            fi
-          fi
-          
           # Check if bot has already reviewed this commit
           PR_NUMBER="${{ github.event.pull_request.number }}"
           CURRENT_SHA="${{ github.event.pull_request.head.sha }}"

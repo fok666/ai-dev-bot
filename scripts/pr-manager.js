@@ -176,7 +176,11 @@ Keep response concise (under 200 words).`;
       
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, 'should_review=true\n');
-        fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_body=${reviewText.replace(/\n/g, ' ')}\n`);
+        
+        // Use heredoc delimiter for multiline output to preserve Markdown formatting
+        const delimiter = 'EOF_REVIEW_BODY';
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_body<<${delimiter}\n${reviewText}\n${delimiter}\n`);
+        
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_action=${action}\n`);
       } else {
         console.log(`::set-output name=should_review::true`);
