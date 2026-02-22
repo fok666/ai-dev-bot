@@ -25,52 +25,138 @@ class IssueManager {
   }
 
   /**
-   * Find the next ready task to work on
+   * Load configuration
+   */
+  loadConfig() {
+    const configPath = path.join(process.cwd(), '.context-cache', 'config.json');
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+    // Fallback to default configuration
+    return {
+      repositories: [{ name: `${this.owner}/${this.repo}`, priority: 'high', enabled: true }]
+    };
+  }
+
+  /**
+   * Find the next ready task to work on across ALL configured repositories
    */
   async findNextTask() {
     try {
-      console.log('🔍 Finding next task...');
+      console.log('🔍 Finding next task across all configured repositories...');
 
-      const { data: issues } = await this.octokit.issues.listForRepo({
-        owner: this.owner,
-        repo: this.repo,
-        state: 'open',
-        labels: 'status-ready,ai-bot-task',
-        sort: 'created',
-        direction: 'asc',
-        per_page: 10
-      });
+      const config = this.loadConfig();
+      const repositories = (config.repositories && config.repositories.length > 0) ? config.repositories : [{ name: `${this.owner}/${this.repo}`, priority: 'high', enabled: true }];
+      
+      console.log(`   Checking ${repositories.filter(r => r.enabled).length} enabled repositories...`);
 
-      if (issues.length === 0) {
-        console.log('ℹ️  No ready tasks found');
+      // Collect all ready tasks from all repositories
+      const allTasks = [];
+
+      for (const repoConfig of repositories) {
+        if (!repoConfig.enabled) {
+          console.log(`   ⊗ Skipping ${repoConfig.name} (disabled)`);
+          continue;
+        }
+
+        const [repoOwner, repoName] = repoConfig.name.split('/');
+        if (!repoOwner || !repoName) {
+          console.warn(`   ⚠️  Invalid repository format: ${repoConfig.name}`);
+          continue;
+        }
+
+        try {
+          console.log(`   📦 Checking ${repoConfig.name}...`);
+          
+          const { data: issues } = await this.octokit.issues.listForRepo({
+            owner: repoOwner,
+            repo: repoName,
+            state: 'open',
+            labels: 'status-ready,ai-bot-task',
+            sort: 'created',
+            direction: 'asc',
+            per_page: 10
+          });
+
+          console.log(`      Found ${issues.length} ready tasks in ${repoConfig.name}`);
+
+          // Add repository context to each issue
+          for (const issue of issues) {
+            allTasks.push({
+              issue,
+              owner: repoOwner,
+              repo: repoName,
+              repoPriority: repoConfig.priority || 'medium'
+            });
+          }
+        } catch (error) {
+          console.error(`   ✗ Error checking ${repoConfig.name}:`, error.message);
+          // Continue to next repository on error
+        }
+      }
+
+      if (allTasks.length === 0) {
+        console.log('ℹ️  No ready tasks found in any repository');
         return null;
       }
 
-      // Find highest priority task
+      console.log(`\n📊 Total ready tasks found: ${allTasks.length}`);
+
+      // Prioritize tasks by:
+      // 1. Issue priority (priority-high > priority-medium > priority-low)
+      // 2. Repository priority (from config)
+      // 3. Creation date (older first)
       const priorityOrder = ['priority-high', 'priority-medium', 'priority-low'];
-      let selectedIssue = null;
+      const repoPriorityOrder = ['high', 'medium', 'low'];
 
-      for (const priority of priorityOrder) {
-        selectedIssue = issues.find(issue => 
-          issue.labels.some(label => label.name === priority)
+      allTasks.sort((a, b) => {
+        // Compare issue priority
+        const aPriority = priorityOrder.findIndex(p => 
+          a.issue.labels.some(label => label.name === p)
         );
-        if (selectedIssue) break;
-      }
+        const bPriority = priorityOrder.findIndex(p => 
+          b.issue.labels.some(label => label.name === p)
+        );
 
-      // If no priority label, take first issue
-      if (!selectedIssue) {
-        selectedIssue = issues[0];
-      }
+        const aIssuePriority = aPriority === -1 ? 999 : aPriority;
+        const bIssuePriority = bPriority === -1 ? 999 : bPriority;
 
-      console.log(`✅ Found task: #${selectedIssue.number} - ${selectedIssue.title}`);
+        if (aIssuePriority !== bIssuePriority) {
+          return aIssuePriority - bIssuePriority;
+        }
+
+        // Compare repo priority
+        const aRepoPriority = repoPriorityOrder.indexOf(a.repoPriority);
+        const bRepoPriority = repoPriorityOrder.indexOf(b.repoPriority);
+
+        if (aRepoPriority !== bRepoPriority) {
+          return aRepoPriority - bRepoPriority;
+        }
+
+        // Compare creation date (older first)
+        return new Date(a.issue.created_at) - new Date(b.issue.created_at);
+      });
+
+      const selectedTask = allTasks[0];
+      const { issue, owner, repo } = selectedTask;
+
+      console.log(`\n✅ Selected task: ${owner}/${repo}#${issue.number} - ${issue.title}`);
+      console.log(`   Priority: ${issue.labels.find(l => l.name.startsWith('priority-'))?.name || 'none'}`);
+      console.log(`   Repository Priority: ${selectedTask.repoPriority}`);
       
       if (process.env.GITHUB_OUTPUT) {
-        fs.appendFileSync(process.env.GITHUB_OUTPUT, `issue_number=${selectedIssue.number}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `issue_number=${issue.number}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `target_owner=${owner}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `target_repo=${repo}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `target_repo_full=${owner}/${repo}\n`);
       } else {
-        console.log(`::set-output name=issue_number::${selectedIssue.number}`);
+        console.log(`::set-output name=issue_number::${issue.number}`);
+        console.log(`::set-output name=target_owner::${owner}`);
+        console.log(`::set-output name=target_repo::${repo}`);
+        console.log(`::set-output name=target_repo_full::${owner}/${repo}`);
       }
       
-      return selectedIssue;
+      return selectedTask;
     } catch (error) {
       console.error('Error finding next task:', error.message);
       throw error;
@@ -78,23 +164,26 @@ class IssueManager {
   }
 
   /**
-   * Load context from issue comments
+   * Load context from issue comments (supports cross-repo)
    */
-  async loadContext(issueNumber) {
+  async loadContext(issueNumber, targetOwner = null, targetRepo = null) {
     try {
-      console.log(`📖 Loading context for issue #${issueNumber}...`);
+      const owner = targetOwner || this.owner;
+      const repo = targetRepo || this.repo;
+      
+      console.log(`📖 Loading context for ${owner}/${repo}#${issueNumber}...`);
 
       // Get issue details
       const { data: issue } = await this.octokit.issues.get({
-        owner: this.owner,
-        repo: this.repo,
+        owner,
+        repo,
         issue_number: issueNumber
       });
 
       // Get all comments
       const { data: comments } = await this.octokit.issues.listComments({
-        owner: this.owner,
-        repo: this.repo,
+        owner,
+        repo,
         issue_number: issueNumber
       });
 
@@ -107,6 +196,11 @@ class IssueManager {
         }));
 
       const context = {
+        repository: {
+          owner,
+          repo,
+          full_name: `${owner}/${repo}`
+        },
         issue: {
           number: issue.number,
           title: issue.title,
@@ -124,15 +218,19 @@ class IssueManager {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      const contextFile = path.join(tempDir, `context-${issueNumber}.json`);
+      const contextFile = path.join(tempDir, `context-${owner}-${repo}-${issueNumber}.json`);
       fs.writeFileSync(contextFile, JSON.stringify(context, null, 2));
 
       console.log(`✅ Context loaded: ${executionHistory.length} previous attempts`);
       
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `context_file=${contextFile}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `target_owner=${owner}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `target_repo=${repo}\n`);
       } else {
         console.log(`::set-output name=context_file::${contextFile}`);
+        console.log(`::set-output name=target_owner::${owner}`);
+        console.log(`::set-output name=target_repo::${repo}`);
       }
 
       return context;
@@ -726,11 +824,13 @@ async function main() {
 
       case 'load-context':
         const issueNumber = process.argv.find(arg => arg.startsWith('--issue='))?.split('=')[1];
+        const targetOwner = process.argv.find(arg => arg.startsWith('--target-owner='))?.split('=')[1];
+        const targetRepo = process.argv.find(arg => arg.startsWith('--target-repo='))?.split('=')[1];
         if (!issueNumber) {
           console.error('Error: --issue=<number> required');
           process.exit(1);
         }
-        await manager.loadContext(parseInt(issueNumber));
+        await manager.loadContext(parseInt(issueNumber), targetOwner, targetRepo);
         break;
 
       case 'log-execution':

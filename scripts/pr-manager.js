@@ -23,11 +23,14 @@ class PRManager {
   }
 
   /**
-   * Create a pull request
+   * Create a pull request (supports cross-repo)
    */
-  async create(branch, title, issueNumber = null) {
+  async create(branch, title, issueNumber = null, targetOwner = null, targetRepo = null) {
     try {
-      console.log(`📝 Creating PR from branch ${branch}...`);
+      const owner = targetOwner || this.owner;
+      const repo = targetRepo || this.repo;
+      
+      console.log(`📝 Creating PR in ${owner}/${repo} from branch ${branch}...`);
 
       // Load plan if available
       let body = `## AI-Generated Implementation
@@ -38,10 +41,21 @@ This PR was automatically created by the AI-Dev-Bot.
       if (issueNumber) {
         body += `\nCloses #${issueNumber}\n`;
 
-        const planFile = path.join(process.cwd(), '.context-cache', `plan-${issueNumber}.json`);
-        if (fs.existsSync(planFile)) {
-          const plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
-          
+        // Try multiple plan file formats (with and without repo context)
+        const planFiles = [
+          path.join(process.cwd(), '.context-cache', `plan-${owner}-${repo}-${issueNumber}.json`),
+          path.join(process.cwd(), '.context-cache', `plan-${issueNumber}.json`)
+        ];
+
+        let plan = null;
+        for (const planFile of planFiles) {
+          if (fs.existsSync(planFile)) {
+            plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
+            break;
+          }
+        }
+
+        if (plan) {
           body += `\n## Implementation Plan
 
 **Approach:**
@@ -65,8 +79,8 @@ ${plan.testing}
       }
 
       const { data: pr } = await this.octokit.pulls.create({
-        owner: this.owner,
-        repo: this.repo,
+        owner,
+        repo,
         title,
         body,
         head: branch,
@@ -74,7 +88,8 @@ ${plan.testing}
         draft: false
       });
 
-      console.log(`✅ PR created: #${pr.number}`);
+      console.log(`✅ PR created: ${owner}/${repo}#${pr.number}`);
+      console.log(`   URL: ${pr.html_url}`);
       
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `pr_number=${pr.number}\n`);
@@ -220,13 +235,21 @@ async function main() {
         const branch = process.argv.find(arg => arg.startsWith('--branch='))?.split('=')[1];
         const title = process.argv.find(arg => arg.startsWith('--title='))?.split('=')[1];
         const issue = process.argv.find(arg => arg.startsWith('--issue='))?.split('=')[1];
+        const targetOwner = process.argv.find(arg => arg.startsWith('--target-owner='))?.split('=')[1];
+        const targetRepo = process.argv.find(arg => arg.startsWith('--target-repo='))?.split('=')[1];
 
         if (!branch || !title) {
           console.error('Error: --branch=<name> and --title=<text> required');
           process.exit(1);
         }
 
-        await manager.create(branch, title, issue ? parseInt(issue) : null);
+        await manager.create(
+          branch, 
+          title, 
+          issue ? parseInt(issue) : null,
+          targetOwner,
+          targetRepo
+        );
         break;
 
       case 'review':

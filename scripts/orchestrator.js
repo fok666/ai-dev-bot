@@ -73,6 +73,13 @@ class Orchestrator {
       const context = this.loadContext(contextFile);
       const sdd = this.readSDD();
 
+      // Extract repository context
+      const targetOwner = context.repository ? context.repository.owner : this.owner;
+      const targetRepo = context.repository ? context.repository.repo : this.repo;
+      const repoFullName = context.repository ? context.repository.full_name : `${this.owner}/${this.repo}`;
+
+      console.log(`   Target repository: ${repoFullName}`);
+
       // Build prompt
       const prompt = this.buildPrompt(context, sdd);
 
@@ -88,9 +95,17 @@ class Orchestrator {
       // Parse response
       const plan = this.parseResponse(text);
 
-      // Save plan
-      const planFile = path.join(process.cwd(), '.context-cache', `plan-${issueNumber}.json`);
-      fs.writeFileSync(planFile, JSON.stringify(plan, null, 2));
+      // Save plan with repository context
+      const planFile = path.join(process.cwd(), '.context-cache', `plan-${targetOwner}-${targetRepo}-${issueNumber}.json`);
+      const planWithContext = {
+        ...plan,
+        repository: {
+          owner: targetOwner,
+          repo: targetRepo,
+          full_name: repoFullName
+        }
+      };
+      fs.writeFileSync(planFile, JSON.stringify(planWithContext, null, 2));
 
       // Create branch
       const branchName = `ai-bot/issue-${issueNumber}`;
@@ -100,15 +115,19 @@ class Orchestrator {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `branch=${branchName}\n`);
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `pr_title=${plan.title || context.issue.title}\n`);
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `plan_file=${planFile}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `target_owner=${targetOwner}\n`);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `target_repo=${targetRepo}\n`);
       } else {
         console.log(`::set-output name=has_changes::true`);
         console.log(`::set-output name=branch::${branchName}`);
         console.log(`::set-output name=pr_title::${plan.title || context.issue.title}`);
         console.log(`::set-output name=plan_file::${planFile}`);
+        console.log(`::set-output name=target_owner::${targetOwner}`);
+        console.log(`::set-output name=target_repo::${targetRepo}`);
       }
 
       // Post execution context to issue
-      await this.postExecutionContext(issueNumber, plan, text);
+      await this.postExecutionContext(issueNumber, plan, text, targetOwner, targetRepo);
 
       return plan;
     } catch (error) {
@@ -122,11 +141,12 @@ class Orchestrator {
    */
   buildPrompt(context, sdd) {
     const sddExcerpt = this.gemini.optimizePrompt(sdd, 3000);
+    const repoFullName = context.repository ? context.repository.full_name : `${this.owner}/${this.repo}`;
 
-    return `You are an expert software engineer working on the AI-Dev-Bot project.
+    return `You are an expert software engineer working on ${repoFullName}.
 
 Context:
-- Repository: ${this.owner}/${this.repo}
+- Repository: ${repoFullName}
 - Current Task: ${context.issue.title}
 - Issue: #${context.issue.number}
 
@@ -233,10 +253,12 @@ DECISIONS:
   }
 
   /**
-   * Post execution context to issue
+   * Post execution context to issue (supports cross-repo)
    */
-  async postExecutionContext(issueNumber, plan, fullResponse) {
+  async postExecutionContext(issueNumber, plan, fullResponse, targetOwner = null, targetRepo = null) {
     try {
+      const owner = targetOwner || this.owner;
+      const repo = targetRepo || this.repo;
       const timestamp = new Date().toISOString();
       const runId = process.env.GITHUB_RUN_ID || 'local';
       const runUrl = process.env.GITHUB_SERVER_URL 
@@ -272,13 +294,13 @@ ${plan.decisions}
 `;
 
       await this.octokit.issues.createComment({
-        owner: this.owner,
-        repo: this.repo,
+        owner,
+        repo,
         issue_number: issueNumber,
         body
       });
 
-      console.log('✅ Execution context posted to issue');
+      console.log(`✅ Execution context posted to ${owner}/${repo}#${issueNumber}`);
     } catch (error) {
       console.error('Error posting execution context:', error.message);
     }
