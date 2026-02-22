@@ -176,7 +176,11 @@ Keep response concise (under 200 words).`;
       
       if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, 'should_review=true\n');
-        fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_body=${reviewText.replace(/\n/g, ' ')}\n`);
+        
+        // Use heredoc delimiter for multiline output to preserve Markdown formatting
+        const delimiter = 'EOF_REVIEW_BODY';
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_body<<${delimiter}\n${reviewText}\n${delimiter}\n`);
+        
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_action=${action}\n`);
       } else {
         console.log(`::set-output name=should_review::true`);
@@ -187,6 +191,38 @@ Keep response concise (under 200 words).`;
       return { action, body: reviewText };
     } catch (error) {
       console.error('Error reviewing PR:', error.message);
+      
+      // Graceful handling for rate limits and quota errors
+      const isRateLimitError = 
+        error.code === 'RATE_LIMIT_EXCEEDED' ||
+        error.message?.includes('RESOURCE_EXHAUSTED') ||
+        error.message?.includes('quota') ||
+        error.message?.includes('429') ||
+        error.message?.includes('Circuit breaker');
+      
+      if (isRateLimitError) {
+        console.warn('⚠️  Gemini rate limit/quota exceeded - failing gracefully');
+        
+        const fallbackMessage = `## ⚠️ AI Review Temporarily Unavailable\n\n` +
+          `The AI code review could not be completed due to API rate limits or quota.\n\n` +
+          `**Reason:** ${error.message}\n\n` +
+          `This is a temporary issue. The review will be automatically retried when:\n` +
+          `- New commits are pushed to this PR\n` +
+          `- The rate limit resets (typically within an hour)\n\n` +
+          `_Manual review is recommended in the meantime._`;
+        
+        if (process.env.GITHUB_OUTPUT) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'should_review=true\n');
+          const delimiter = 'EOF_REVIEW_BODY';
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `review_body<<${delimiter}\n${fallbackMessage}\n${delimiter}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'review_action=COMMENT\n');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'rate_limited=true\n');
+        }
+        
+        // Return graceful response instead of throwing
+        return { action: 'COMMENT', body: fallbackMessage, rateLimited: true };
+      }
+      
       throw error;
     }
   }
