@@ -46,7 +46,7 @@ class IssueManager {
       console.log('🔍 Finding next task across all configured repositories...');
 
       const config = this.loadConfig();
-      const repositories = config.repositories || [{ name: `${this.owner}/${this.repo}`, priority: 'high', enabled: true }];
+      const repositories = (config.repositories && config.repositories.length > 0) ? config.repositories : [{ name: `${this.owner}/${this.repo}`, priority: 'high', enabled: true }];
       
       console.log(`   Checking ${repositories.filter(r => r.enabled).length} enabled repositories...`);
 
