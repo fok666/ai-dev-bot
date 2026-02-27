@@ -22,7 +22,7 @@ class SelfImprovement {
 
     const repoEnv = process.env.GITHUB_REPOSITORY || '';
     const [owner, repo] = repoEnv.split('/');
-    this.owner = owner || 'unknown';
+    this.owner = owner || 'kornfer';
     this.repo = repo || 'ai-dev-bot';
     
     this.metricsDir = path.join(process.cwd(), '.metrics');
@@ -432,6 +432,7 @@ ${s.implementation}
 }
 
 // CLI interface
+if (import.meta.url === `file://${process.argv[1]}`) {
 const command = process.argv[2];
 const selfImprovement = new SelfImprovement();
 
@@ -491,6 +492,7 @@ Examples:
   node self-improvement.js analyze
   node self-improvement.js propose
 `);
+}
 }
 
 export default SelfImprovement;

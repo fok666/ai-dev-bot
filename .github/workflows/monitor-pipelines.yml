@@ -172,8 +172,8 @@ jobs:
             # Check for rate limit
             if [ "${{ steps.create_issues.outputs.rate_limited }}" == "true" ]; then
               echo "⚠️  **Rate Limited** - Circuit breaker will prevent next run" >> $GITHUB_STEP_SUMMARY
-            elif [ -n "${{ steps.analyze.outputs.issues_created }}" ]; then
-              echo "📝 Created ${{ steps.analyze.outputs.issues_created }} investigation issue(s)" >> $GITHUB_STEP_SUMMARY
+            elif [ -n "${{ steps.create_issues.outputs.issues_created }}" ]; then
+              echo "📝 Created ${{ steps.create_issues.outputs.issues_created }} investigation issue(s)" >> $GITHUB_STEP_SUMMARY
             else
               echo "ℹ️  No new investigation issues needed (duplicates found or updated)" >> $GITHUB_STEP_SUMMARY
             fi

@@ -79,7 +79,7 @@ None
 ---
 
 🤖 **AI-Generated:** <!-- Yes/No -->  
-**Model:** <!-- e.g., Gemini 3.0 Flash -->  
+**Model:** <!-- e.g., Gemini 2.5 Flash -->  
 **Issue Context:** <!-- Brief summary of context used -->
 
 ---
