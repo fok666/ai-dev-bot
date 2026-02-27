@@ -726,6 +726,10 @@ class GeminiService {
    */
   getPricing(model) {
     const pricing = {
+      // Gemini 2.5 models (2026 pricing)
+      'gemini-2.5-flash': { input: 0.075, output: 0.30 },
+      'gemini-2.5-pro': { input: 1.25, output: 5.00 },
+      // Legacy 1.5 models (backward compatibility)
       'gemini-1.5-flash-8b': { input: 0.0375, output: 0.15 },
       'gemini-1.5-flash': { input: 0.075, output: 0.30 },
       'gemini-1.5-pro': { input: 1.25, output: 5.00 },
