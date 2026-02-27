@@ -72,7 +72,8 @@ class TestRunner {
   async runJest() {
     console.log('🧪 Running Jest tests...');
     try {
-      const { stdout, stderr } = await execAsync('npx jest --json --coverage=false', {
+      // Use --experimental-vm-modules for ES module support (matches package.json test script)
+      const { stdout, stderr } = await execAsync('node --experimental-vm-modules node_modules/jest/bin/jest.js --json --coverage=false', {
         cwd: this.projectRoot,
         timeout: 300000 // 5 minutes
       });
