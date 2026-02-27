@@ -347,7 +347,7 @@ class ContextAnalyzer {
 
       // Analyze with Gemini if available
       let analysis = null;
-      if (this.model) {
+      if (this.gemini) {
         const prompt = `Analyze this GitHub Actions workflow failure:
 
 **Workflow:** ${context.run.name}

@@ -56,8 +56,20 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.issue_number }}" ]; then
             echo "issue_number=${{ github.event.inputs.issue_number }}" >> $GITHUB_OUTPUT
+            # Set target repo from input or default to current repo
+            if [ -n "${{ github.event.inputs.repository }}" ]; then
+              FULL_REPO="${{ github.event.inputs.repository }}"
+            else
+              FULL_REPO="${{ github.repository }}"
+            fi
+            echo "target_repo_full=$FULL_REPO" >> $GITHUB_OUTPUT
+            echo "target_owner=${FULL_REPO%%/*}" >> $GITHUB_OUTPUT
+            echo "target_repo=${FULL_REPO##*/}" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" == "issues" ]; then
             echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "target_repo_full=${{ github.repository }}" >> $GITHUB_OUTPUT
+            echo "target_owner=${{ github.repository_owner }}" >> $GITHUB_OUTPUT
+            echo "target_repo=${{ github.event.repository.name }}" >> $GITHUB_OUTPUT
           else
             node scripts/issue-manager.js find-next-task
           fi
@@ -131,8 +143,9 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "🤖 Generating code from implementation plan..."
+          # Use plan_file output from orchestrator (format: plan-{owner}-{repo}-{issue}.json)
           node scripts/code-generator.js generate \
-            --plan=".context-cache/plan-${{ steps.issue.outputs.issue_number }}.json" \
+            --plan="${{ steps.execute.outputs.plan_file }}" \
             --context="${{ steps.context.outputs.context_file }}" \
             --issue="${{ steps.issue.outputs.issue_number }}"
           
