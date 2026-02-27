@@ -131,8 +131,10 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "🤖 Generating code from implementation plan..."
+          # Construct plan file path matching orchestrator's naming: plan-{owner}-{repo}-{issue}.json
+          PLAN_FILE=".context-cache/plan-${{ steps.issue.outputs.target_owner || github.repository_owner }}-${{ steps.issue.outputs.target_repo || github.event.repository.name }}-${{ steps.issue.outputs.issue_number }}.json"
           node scripts/code-generator.js generate \
-            --plan=".context-cache/plan-${{ steps.issue.outputs.issue_number }}.json" \
+            --plan="$PLAN_FILE" \
             --context="${{ steps.context.outputs.context_file }}" \
             --issue="${{ steps.issue.outputs.issue_number }}"
           
