@@ -30,7 +30,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GH_API_TOKEN || secrets.GITHUB_TOKEN }}
@@ -99,7 +99,7 @@ jobs:
       
       - name: Checkout Target Repository
         if: steps.check_issue.outputs.has_issue == 'true' && steps.issue.outputs.target_repo && steps.issue.outputs.target_repo != 'ai-dev-bot'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.issue.outputs.target_repo_full }}
           path: target-repo
