@@ -42,7 +42,7 @@ jobs:
           echo "No existing review found for this commit. Proceeding with review..."
           
       - name: Checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
